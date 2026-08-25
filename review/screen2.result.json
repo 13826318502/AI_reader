@@ -1,0 +1,30 @@
+{
+  "artifactType": "visual_review_result",
+  "status": "failed",
+  "comparisons": [
+    {
+      "id": "screenshot-diff",
+      "sourcePath": "D:\\reader\\assets\\ui_targets\\screen_2.bmp",
+      "actualPath": "D:\\reader\\review\\actual_home_325.bmp",
+      "diffPath": "D:\\reader\\review\\screen2.diff.ppm",
+      "status": "failed",
+      "metrics": {
+        "width": 325,
+        "height": 610,
+        "pixelDiffRatio": 0.29915762925598993,
+        "similarity": 0.7008423707440101,
+        "meanChannelDelta": 32.60412442202283,
+        "differentPixels": 59308,
+        "comparedPixels": 198250,
+        "ignoredPixels": 0,
+        "totalPixels": 198250
+      }
+    }
+  ],
+  "findings": [
+    {
+      "severity": "error",
+      "message": "Screenshot diff exceeds configured thresholds."
+    }
+  ]
+}

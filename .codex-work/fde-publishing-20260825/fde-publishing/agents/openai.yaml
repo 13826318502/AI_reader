@@ -1,0 +1,4 @@
+interface:
+  display_name: "FDE 员工发布与下线"
+  short_description: "创建、发布、撤回并验证账号范围的定制员工 Release"
+  default_prompt: "Use $fde-publishing to publish, revoke, or verify one reviewed account-scoped YooDesk custom employee release."

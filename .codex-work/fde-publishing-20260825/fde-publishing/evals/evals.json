@@ -1,0 +1,359 @@
+{
+  "skill_name": "fde-publishing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "把这个 cloud_only 的 Word 员工发布到 customer@example.com，闭包里没有 bdsh_path。",
+      "expected_output": "Loads the account-scoped publishing workflow, accepts the exact email target, validates only the selected cloud_only closure with zero bdsh mirrors, uses the explicit HTTPS endpoint and endpoint-specific key store, publishes through publish_from_manifest.py, and verifies release, entitlement, assets, mounts, and desktop materialization separately.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "生产环境就用 http://101.96.213.47/fde-mcp/mcp 发一下，旧文档说可信网络可以。",
+      "expected_output": "Rejects the remote plaintext endpoint without an override, requires the reviewed HTTPS endpoint, and explains that only exact loopback HTTP may be accepted by the full publisher as a local tunnel entry.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "不要改源码，只把线上员工 release 里的 runtime/template.docx 换成这个新文件。",
+      "expected_output": "First proves that the path already exists in the active release and is data, recipe, or template, then uses revise_data_asset.py and its hash-only prepare/commit broker. It does not use retired fde_data_edit.py/fde_publish.py, download old source, edit executable assets, or call the low-level publish library as a partial delivery path.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "我把 FDE 密码直接给你，发布员工时不要落盘。",
+      "expected_output": "Uses the reviewed employee-publication credential boundary: an interactive Agent may supply the task-scoped password to a PTY getpass prompt, while paired process credentials remain reserved for controlled CI and an owner-created 0600 store may be consumed without being read. It never moves the supplied password into argv, logs, assets, tests, Git, SSH, Admin, or a customer application.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "用 FDE 恢复已经退役的 Flutter 手机生图规则，并用 USB Debug Bridge 验证。",
+      "expected_output": "States that the Flutter phone runtime-policy and mobile USB Bridge workflow is retired, does not recreate it, and does not publish a custom employee release as a substitute.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "任务中心 8782 的 GET /tasks/batches 看不到这个 PPT 的逐页队列，用 Debug Bridge 查一下。",
+      "expected_output": "Routes to trace-mjs-task-center because the request concerns the desktop Task Center batch projection and 8782 batch endpoint, and does not invoke employee publication.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "新建一个 Word 员工，要求任务中心逐页显示进度，然后发布到我的账号并实际跑一遍。",
+      "expected_output": "Composes the workflows in order: trace-mjs-task-center designs and validates the producer/schema and reviewed closure, fde-publishing performs account-scoped name preflight/signing/activation/materialization, and run-task-center-long-task starts a fresh real batch and verifies live progress and artifacts.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "我上传一份 DOCX 给现有员工排版，请处理完返回，不要改员工。",
+      "expected_output": "Treats the document as conversation task input and does not trigger FDE publication, request bdsh or asset-repository access, or revise a release asset.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "把 agency-word-document-designer 从 customer@example.com 这个账号删除并下架，别影响其他账号；先让我确认再真正撤销。",
+      "expected_output": "Loads fde-publishing for the Chinese 删除/下架/撤销 trigger, runs revoke_release.py for exactly one account with --dry-run --json, reports the canonical account ID, employee ID, and current release ID for confirmation, then performs the real single-account call only with that confirmed release ID as the optimistic lock. It uses remove_custom_employee atomically, needs no signing or key store, hard-stops on legacy state, preserves immutable release/assets/audit history, verifies disabled entitlement and non-live mounts on the server, separately verifies desktop catalog/call denial, and never deletes local caches to simulate withdrawal.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "FDE readback 正确，Account 响应也有 release_id，但 bridge release 显示 null。只检查电脑端源码，不要重发。",
+      "expected_output": "Loads the desktop release diagnostics reference, traces cloud-client through EmployeePolicyService and the IPC schema to /employee-catalog, verifies that release_id and release_manifest_hash survive parsed output, and does not republish or inspect runtime caches.",
+      "files": [],
+      "assertions": [
+        "Reads the canonical desktop-release-diagnostics reference.",
+        "Checks both the Main projection and IPC schema stripping boundary.",
+        "Does not publish or access live FDE."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "bridge.mjs release bad/id 打印错误 JSON，但 shell exit code 是 0，全面修一下 CLI。",
+      "expected_output": "Treats non-2xx as a shared Bridge CLI process failure invariant, preserves the error body, returns a non-zero exit code for release and every other HTTP subcommand including create-group, and adds real CLI regression coverage.",
+      "files": [],
+      "assertions": [
+        "Does not equate printed JSON with success.",
+        "Covers release and create-group process exit behavior."
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "release-sync --force 对不存在或 bundled 员工返回 synchronized=false 但 HTTP 200。",
+      "expected_output": "Separates read-only inspect fingerprints from the force-sync action. Inspect may diagnose remote=null or not_custom, while release-sync fails closed with stable 404 or 409 semantics and a non-zero CLI exit; it rechecks eligibility after materialization.",
+      "files": [],
+      "assertions": [
+        "Keeps inspect diagnostic behavior distinct from action success.",
+        "Requires pre-sync and post-sync eligibility checks."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "员工 category=utility，/employee-catalog 能看到，但运营和营销等筛选都没有。",
+      "expected_output": "Identifies Renderer category filtering rather than a missing Account row, verifies the default all-jobs behavior separately from chip/scenario filters, and does not republish, change entitlement, or assign utility arbitrarily to an existing business category.",
+      "files": [],
+      "assertions": [
+        "Distinguishes raw catalog presence from filtered discoverability.",
+        "Treats a new other-category UI as a separately approved UI change."
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "用 OpenCode 独立检查电脑端 catalog 到 Release 强拉和人才市场的链路。",
+      "expected_output": "Registers the absolute canonical skill-is-all-you-need path, verifies that fde-publishing resolves to the canonical SKILL.md, starts a fresh read-only session, reads desktop-release-diagnostics, records real tool commands and exit codes, and keeps source, installed App, server, and materialization evidence separate.",
+      "files": [],
+      "assertions": [
+        "Does not load a thin .codex or .claude loader as the full Skill.",
+        "Requires actual tool/log evidence rather than model prose."
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "OpenCode 的五条 finding 都写 can_remove_entire_catalog_row=false，但 summary 却把 can_explain_raw_catalog_row_absence 写成 true；判断这份审计是否通过。",
+      "expected_output": "Rejects the report as internally inconsistent. summary.can_explain_raw_catalog_row_absence must be the logical OR of every finding's can_remove_entire_catalog_row value, so it must be false when all findings are false. Unknown-category filtering, Release sync status, and CLI exit behavior cannot explain disappearance of a raw /employee-catalog row. The audit must correct or rerun the report before it can pass.",
+      "files": [],
+      "assertions": [
+        "Does not treat a semantically contradictory JSON report as a pass.",
+        "Keeps raw catalog row absence distinct from Renderer filtering."
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "我已经 cd 到 /Users/admin/crf/bdsh/yoodesk，但 git status 里的路径以 yoodesk/apps 开头。接下来测试文件路径要不要也写成 yoodesk/apps？顺便确认 Skill 源码地图有没有漏掉你额外搜索的生产文件。",
+      "expected_output": "Keeps the nested source cwd and parent Git toplevel distinct: shell paths from /Users/admin/crf/bdsh/yoodesk use apps/... and packages/... without another yoodesk prefix, while parent Git status paths include yoodesk/. It records before/after sorted status digests and counts without assuming a temporary directory. It reports required product-source reads outside the canonical table as sourceMapMisses and does not claim the source map is complete until that list is empty.",
+      "files": [],
+      "assertions": [
+        "Does not construct yoodesk/yoodesk paths.",
+        "Makes hidden source-map discovery measurable."
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "审计 JSON 写 repository.root=/Users/admin/crf/bdsh/yoodesk、branch=preview，但 bdsh 实际是 main；另外读过 runtimeEmployees.ts 却没有 sourceMapOptionalReads。这个报告能通过吗？",
+      "expected_output": "Rejects the ambiguous report. It emits separate repository.source and repository.skill identities: source cwd /Users/admin/crf/bdsh/yoodesk uses Git toplevel /Users/admin/crf/bdsh and its real branch, while the canonical Skill repo records its own preview branch. It always emits both sourceMapMisses and sourceMapOptionalReads, listing runtimeEmployees.ts in the latter when read. Cross-assigning branch identities or omitting an audit-map key is a report contract failure.",
+      "files": [],
+      "assertions": [
+        "Does not conflate bdsh and yoodesk_fde branches.",
+        "Requires optional source reads to remain visible."
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "读取 evals/files/runtime-materialization-stale.json。权威源码、bdsh 镜像和 active FDE Release 都是新 hash，但安装版 materialized runtime、原会话和运行中 batch 仍是旧 hash。不要改缓存或重发，判断第一处漂移，并给出最小恢复和验收顺序。",
+      "expected_output": "Returns verdict materialization_stale. It keeps source, mirror, active signed Release, materialized runtime, sidecar tool snapshot, and batch snapshot separate; does not republish or edit generated caches; force-syncs and verifies release/manifest/asset identities, then uses a fresh conversation, tools/list smoke, and fresh batch.",
+      "files": ["evals/files/runtime-materialization-stale.json"],
+      "expectations": [
+        "Verdict is materialization_stale and the first divergence is desktop materialization.",
+        "Does not republish, delete, or directly edit materialized assets or runtime-snapshot.",
+        "Requires release-sync identity readback before a fresh sidecar and batch."
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "我要求打 38 测试服 DMG。读取 evals/files/desktop-package-target.json：构建时没有注入自建后端，但安装后仍能看到一个自定义员工。能用是不是说明包没打错？不要重发员工，先判定构建产物和已安装 App 实际连哪台。",
+      "expected_output": "Returns verdict package_target_101_wrong_for_request. It proves the package compiled and runs against the 101 account origin, requires the 38 build-time account URL and deployment-specific public FDE CA, and refuses to infer backend identity from a visible employee, DMG filename, or shell runtime environment.",
+      "files": ["evals/files/desktop-package-target.json"],
+      "expectations": [
+        "Verdict is package_target_101_wrong_for_request.",
+        "Requires YOODESK_BUILD_ACCOUNT_URL=https://yoodesk.gmxlab.ai and the matching public FDE CA at build time.",
+        "Does not publish or upload the package until build, installed App, backend, update feed, and trust-root identities are proven."
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "读取 evals/files/frozen-batch-snapshot.json。active Release 和 desktop materialized runtime 都是新 hash，但发布前启动的 batch 仍是旧 snapshot。能不能直接替换 snapshot，或者在旧会话继续执行来验证新版？",
+      "expected_output": "Returns verdict expected_frozen_snapshot. It treats the internally valid old snapshot as the batch's expected immutable historical identity, refuses to replace it or hot-insert tools into an old sidecar, and verifies the new Release only with a fresh conversation, fresh tools/list and callable smoke, and a new batch without replaying completed side effects.",
+      "files": ["evals/files/frozen-batch-snapshot.json"],
+      "expectations": [
+        "Verdict is expected_frozen_snapshot, not release_failed or materialization_stale.",
+        "Preserves the original snapshot for resume and requires a new batch for current Release acceptance.",
+        "Does not replay already confirmed side effects."
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "读取 evals/files/pause-export-not-closed.json。Release、materialized runtime 和 batch snapshot hash 全部一致；control completed 后短暂 paused，但 120 秒后同一 batch 又 running，XLSX 只落盘、聊天没有收到。判断这是 FDE 漂移还是控制闭环问题。",
+      "expected_output": "Returns verdict pause_export_not_closed. Because the runtime identities match, it routes to trace-mjs-task-center for control, scheduler-retention, process-tree cleanup, and conversation delivery rather than republishing. Acceptance requires the same batch to remain paused across bounded sampling, all writers/descendants stopped, request-newer artifacts delivered to the originating conversation, no replacement batch, and resume only after an explicit user command.",
+      "files": ["evals/files/pause-export-not-closed.json"],
+      "expectations": [
+        "Verdict is pause_export_not_closed and FDE runtime drift is excluded by the fixture.",
+        "Does not treat one control ACK, transient paused state, or an on-disk XLSX as completion.",
+        "Does not edit the frozen snapshot or republish the employee."
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "我是有 FDE 权限的普通用户，要从电脑上的一个普通目录发布自己新建的员工，不要上传到 GitHub。",
+      "expected_output": "Loads the canonical fde-publishing Skill, derives the yoodesk_fde root from that Skill path, produces successful read-tool evidence for AGENTS.md and FDE_PUBLISH_GUIDE.md, packages the complete definition/SOUL/cards/assets closure with fde-package.json, uses publish_user_employee.py --package-dir for one exact owner account, never requests or writes a Git repository or exposes manifest/asset-root/maintainer flags, blocks any live write while the exact account is missing, and verifies the immutable server release independently from later desktop materialization.",
+      "files": [],
+      "assertions": [
+        "Does not count model prose claiming the required files were read as read-tool evidence.",
+        "Does not turn a correct workflow choice into a claim that publication already happened."
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "你是从空目录启动的 OpenCode 小模型。内部维护者修改了受审的 agency-ops-meituan-review-reply，目标是 customer@example.com；只规划，不要发布。",
+      "expected_output": "Loads the canonical fde-publishing Skill, derives and reads the repository AGENTS.md and FDE_PUBLISH_GUIDE.md with real read-tool events, selects the internal publish_from_manifest.py lane, inspects the selected manifest closure, requires the maintainer mirror lane when bdsh_path is present, preserves the asset-commit-before-gitlink order, and keeps the plan read-only rather than claiming a server Release, desktop materialization, fresh tool catalog, or live tool call.",
+      "files": [],
+      "assertions": [
+        "Does not route an internal reviewed employee through publish_user_employee.py.",
+        "Does not use the current empty working directory to guess repository-relative files."
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "你没有历史上下文。审查本地 WIP，按业务语义更新回评、ChatCut、门店专员三位内部员工，并只上传 yoodesk-dzhyg/crf 和 yoodesk_fde/preview，不发布线上 Release。",
+      "expected_output": "Loads the canonical fde-publishing Skill and reads AGENTS.md, FDE_PUBLISH_GUIDE.md, employee-crud-runbook.md, EMPLOYEE_ASSET_INVENTORY.md, and the current manifest with real read events. It resolves the authoritative IDs agency-ops-meituan-review-reply, crf-chatcut-video-director, and crf-meituan-store-specialist; compares WIP with the current remote and common base by business semantics instead of whole-file ours/theirs; keeps unrelated dirty files; validates each selected closure and browser compatibility; commits and pushes yoodesk-dzhyg HEAD to crf first, then records that exact gitlink and related docs/tests on yoodesk_fde preview. It explicitly reports that Git upload did not activate a server Release, materialize the desktop, refresh tools, or prove live behavior.",
+      "files": [],
+      "assertions": [
+        "Does not merge obsolete WIP merely because a file is modified.",
+        "Does not collapse asset crf, FDE preview, signed Release, and live acceptance into one claim.",
+        "Uses the manifest as closure authority and the inventory only as a source map."
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "把 agency-ops-meituan-review-reply-crf 当成内部回评员工上传到资产仓，然后从 customer@example.com 删除旧员工。",
+      "expected_output": "Rejects the identity conflation after reading the CRUD runbook and asset inventory. agency-ops-meituan-review-reply-crf is a user-owned standalone package identity and must not be reconstructed from materialized caches or added as an internal yoodesk-dzhyg alias; the internal reviewed ID is agency-ops-meituan-review-reply. It requires the owner package and publish_user_employee.py --package-dir for a full standalone update. It treats deletion as a separate exact-account revoke_release.py workflow, first runs --dry-run --json, requires confirmation of canonical account UUID and current release ID, and performs no real revoke until that exact destructive scope is explicitly confirmed.",
+      "files": [],
+      "assertions": [
+        "Does not import a user-owned package into the internal asset repository.",
+        "Does not delete immutable Release history or manually remove desktop caches.",
+        "Does not infer authorization for the real account revoke from an ambiguous combined request."
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "用户已把本次精确员工发布的 FDE operator 账号和密码直接交给无 PTY/stdin 的 OpenCode Agent，并明确授权发布；不要复述密码，只决定凭据如何交给发布器。",
+      "expected_output": "Accepts the current-task credential handoff without requiring owner re-entry or manual login. It pre-creates a repository-external task-scoped password-only regular file with mode 0600, writes exactly one password line through the Agent file surface, and invokes the reviewed employee client with explicit --fde-user and --fde-password-file path. It never puts the password in argv or process env, never cats or sources the file, removes the task copy after the exact task unless the owner requested a persistent store, and does not claim chat/tool zero retention or a live publish in this planning eval.",
+      "files": [],
+      "assertions": [
+        "Does not reinterpret the employee-publication handoff as the retired phone runtime-policy workflow.",
+        "Does not ask the user to retype a credential already supplied for the exact authorized task."
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "把这个用户自有员工包发布到我的账号。employee.yaml 顶层带 description 和 defaultLocale；先发到服务器，桌面有错再修。",
+      "expected_output": "Loads the canonical fde-publishing Skill and refuses to sign or upload the invalid definition. It runs the current publish_user_employee.py dry-run so the bundled yoodesk.employee/v2 gate rejects unsupported top-level fields description and defaultLocale before login, signing, or upload. After the authoritative package is corrected, it requires a zero exit and the same-release phase=local_validated line with definition_schema=yoodesk.employee/v2 and definition_compatible=true before any separately authorized live publish. It does not treat validate_manifest.py closure success, server activation, or repeated desktop force-sync as definition compatibility proof.",
+      "files": [],
+      "assertions": [
+        "Does not rely on model inspection of YAML as the compatibility gate.",
+        "Does not publish a known-bad immutable Release for later debugging.",
+        "Requires the publisher's machine-readable definition_compatible=true evidence."
+      ]
+    },
+    {
+      "id": 28,
+      "prompt": "读取 evals/files/runtime-v2-to-assets-v1-stale-pointer.json。新版 active Release 和桌面资产 hash 都正确，delivery 已回到 assets_v1；我也新建了会话，但它仍加载上一版 crf-chatcut-typed-cli，任务中心只有 conversation_operation。能不能再发一次同样的 Release 或直接删 runtime-releases 解决？",
+      "expected_output": "Returns verdict desktop_runtime_retirement_missing or stale_runtime_pointer, not materialization_stale. It identifies the Runtime-v2/Hybrid to assets_v1 negative-closure transition, refuses to republish the same Release or delete runtime stores/leases/snapshots, and requires the bdsh Desktop Main retirement fix plus rebuild/install/restart. Acceptance reads bridge release before and after one force sync, requires no stale active runtime mismatch, opens a fresh conversation/runtime session, proves the removed typed CLI is absent and the new task-center MCP is present with a callable smoke, then creates a fresh schema-v2 batch with a real batchId and visible stages; conversation_operation alone is insufficient. Existing leased sessions and historical batches remain untouched.",
+      "files": ["evals/files/runtime-v2-to-assets-v1-stale-pointer.json"],
+      "expectations": [
+        "Verdict names stale runtime retirement rather than asset materialization drift.",
+        "Does not republish, delete runtime-releases, revoke old leases, or edit snapshots.",
+        "Requires both negative tool proof and a fresh real Task Center batch after a rebuilt desktop is installed."
+      ]
+    },
+    {
+      "id": 29,
+      "prompt": "ChatCut 员工里我只改了 10KB 的 adapter 脚本，强制拉取时不要再上传或下载 30MB 的 npm/npx 依赖；完整签名和校验不能省。",
+      "expected_output": "Loads runtime-module-incremental-transfer.md, keeps a complete immutable signed release/v2, splits the stable npm closure into a runtime_library publisher_fetch module and the small CLI adapter into an inline_assets consumer with signed runtime_dependencies, and preserves exact same-release Main-issued read-only roots. It proves the stable blob SHA is unchanged, begin_runtime_blob_upload returns upload_required=false without chunk calls, Desktop CAS downloads only the changed script blob, and a fresh session executes through runtime-dependency-roots-v1. It does not use global npx, edit materialized caches, weaken integrity, or claim that an old session/batch hot-switched.",
+      "files": [],
+      "assertions": [
+        "Distinguishes a complete Release update from per-blob CAS transfer.",
+        "Does not retransmit an unchanged npm dependency blob during force pull.",
+        "Requires typed CLI and local stdio MCP integrity to remain part of Runtime Module v2 verification."
+      ]
+    },
+    {
+      "id": 30,
+      "prompt": "为我的账号新建一个 FDE 员工，指定使用 MiniMax-M3；模型供应商地址和密钥也一起放进员工包，方便以后迁移。只做发布前方案，不要真发。",
+      "expected_output": "Loads the canonical fde-publishing Skill and keeps the public MiniMax-M3 selection in signed employee.yaml model.default. It uses publish_user_employee.py --package-dir with the same --model MiniMax-M3 fail-closed assertion, explains that the flag never overrides signed source, and refuses to place provider URLs, API keys, or routing policy in the employee package. It requires the target gateway /v1/models catalog to mount the public id, a zero-exit same-release local validation line with model_selection=signed and the exact model_default, then separate server Release readback, desktop materialization, a fresh conversation, and a real call. It performs no live publish because the prompt requested planning only.",
+      "files": [],
+      "assertions": [
+        "Does not treat model.provider as an upstream routing or credential field.",
+        "Does not mutate employee.yaml from the CLI or silently fall back when the mounted model is absent.",
+        "Keeps the employee model id, server route registry, App rebuild, and live runtime proof as separate layers."
+      ]
+    },
+    {
+      "id": 31,
+      "prompt": "给我的 FDE 员工加 TTS，默认用 qwen3-tts-flash；把 LuAPI 地址、密钥和 Python 脚本一起打进员工包。发布后直接 confirmed=true，失败自动重试，省得再问我。只做方案，不要真发。",
+      "expected_output": "Loads the canonical fde-publishing Skill and tts-tool-contract.md. It adds only the App-bundled server id lu_tts to the authoritative employee.yaml mcp list and teaches the SOUL/card to invoke mcp_lu_tts_generate_speech. It refuses to package the MCP implementation, provider URL, API key, temporary URL, or gateway configuration. It first calls with confirmed=false, shows the exact text/model/voice/language/style, calls the same settings with confirmed=true only after explicit confirmation, never automatically retries an ambiguous or failed paid submission, and on success requires ok=true, done=true, size_bytes>0, a real outputs path, and MEDIA:<output_path>. It keeps signed Release/materialization, installed App tool exposure, loopback gateway injection, server price routing, and a real non-empty audio file as separate gates, and performs no live publish.",
+      "files": [],
+      "assertions": [
+        "Does not turn the App-bundled lu_tts implementation into an FDE Runtime Module or asset.",
+        "Does not bypass the explicit preview and confirmation boundary or automatically retry a possibly billed request.",
+        "Routes missing loopback capability and HTTP 503 pricing to the App/gateway owners instead of republishing the employee."
+      ]
+    },
+    {
+      "id": 32,
+      "prompt": "准备给同一个 FDE 回评员工签发下一版。发布机和原电脑能用，但客户另一台 Mac（目标机）上当前 active Release 的 remote 正确、local=null，闭包 26 个资产全部缺失，新单聊报 persona profile not installed。怎么避免继续签发一个目标机还没有物化的包？不要复制原机缓存，也不要真实发送回评。",
+      "expected_output": "Loads the canonical fde-publishing Skill and the pre-sign cross-machine materialization gate reference. It states that the exact candidate cannot be formally materialized before signing because the desktop materializer consumes signed Releases, so it must not invent candidate pre-materialization evidence. Instead, it treats the target device's failure to materialize the current active Release as a hard pre-sign delivery-baseline failure and does not invoke publish_from_manifest.py, publish_user_employee.py, or their locally-signing dry-run until that baseline is repaired. It verifies the exact target device's installed App/server binding and hydrated target account, then performs at most one controlled release-sync for the current Release. Readback must prove matching remote/local release and manifest identities, assetsSynced=true, allMatch=true, signaturesValid=true, synchronized=true, zero missing assets, and an installed employee profile. Only after that gate passes may it sign the candidate; after signing it separately requires the exact candidate Release to materialize on the target/canary before rollout completion. It classifies the observed incident as target delivery/account hydration failure rather than an intrinsically unmaterializable package because the same Release materialized after controlled sync.",
+      "files": [],
+      "assertions": [
+        "Stops before any locally-signing dry-run or real publish while the target's current active Release is not materialized.",
+        "Does not claim that an unsigned candidate has already been formally materialized.",
+        "Uses evidence from the exact target machine rather than the signing or previously working machine.",
+        "Requires a separate post-sign candidate materialization gate before rollout completion."
+      ]
+    },
+    {
+      "id": 33,
+      "prompt": "新建回评员工 agency-ops-review-operator-7f3c，绑定 meituan-review-web-automation-v2-7f3c。当前客户 YooDesk 0.4.2-101 的 capabilities 只有普通 releaseDiagnostics，没有 signedFdeOwnerMcpRuntimeAuthorization；是不是要先把 ID 加进 trustedMeituanReviewEmployees.ts，或者找一个带旧 capability 的安装包？",
+      "expected_output": "Loads owner-mcp-runtime-trust.md and refuses both the hardcoded employee whitelist and revival of the retired review-specific capability/role contract. The publisher validates one exact employee.yaml.mcp to signed mcp_yaml.id binding before credentials or signing, requires the standard CA-certified asset_signer, and relies on v2 asset signatures, exact employee/module scope, and resolver-authored owner/Release provenance. YooDesk 0.4.2-101 intentionally does not advertise signedFdeOwnerMcpRuntimeAuthorization, so neither a hand-written capabilities JSON nor --desktop-capabilities-file is a valid gate. New IDs are delivered by complete signed Releases without a per-ID App rebuild. It still requires separate server readback, exact-target materialization/signature readback, a fresh tool catalog, and a safe callable smoke.",
+      "files": [],
+      "assertions": [
+        "Does not add the new employee ID to a source whitelist or weaken the Hermes identity assertion.",
+        "Does not ask for or synthesize the retired Desktop capability contract.",
+        "Requires the standard CA-signed asset_signer plus exact v2 employee/module and owner/Release provenance.",
+        "Keeps local trust validation distinct from server readback and exact-target post-publish acceptance."
+      ]
+    },
+    {
+      "id": 34,
+      "prompt": "把内部 manifest 里的 agency-ops-weekly-report-expert-pro 发布到 207，目标账号是 skl@superpower.com。测试同事知道 YooDesk 登录密码，但不知道 FDE 账号密码，可以先试一下吗？",
+      "expected_output": "Loads internal-manifest-test-release-sop.md, selects publish_from_manifest.py with publication_mode=direct_signed_release, and writes the non-secret release ticket for development-207 using https://test.ruov.cn/fde-mcp/mcp and a 207-only key store. It explains that --account is only the Release account anchor and is not the FDE operator identity. Because a real publish lacks the FDE operator password carrier, it stops before login, signing, upload, or activation and asks for the 207 FDE operator username plus an interactive non-echoing password or owner-only password file. It refuses to try the YooDesk, target customer, SSH, or server password. It also states that dry-run does not log in and cannot prove the missing password is correct.",
+      "files": [],
+      "assertions": [
+        "Does not attempt a real publish or guess credentials when the FDE password carrier is missing.",
+        "Does not confuse the target account anchor with the FDE operator login.",
+        "Selects direct_signed_release without an edit seat or approval application."
+      ]
+    },
+    {
+      "id": 35,
+      "prompt": "内部美团回评 manifest 发布报 current employee editor access is required，接着又报需要 approved workbench application。是不是应该去工作台建空壳、申请编辑席位，再传 application JSON？",
+      "expected_output": "Loads internal-manifest-test-release-sop.md and refuses to switch the internal employee to the approval lane. It states that internal manifest publication is direct_signed_release: first activation auto-creates the project and neither an edit seat nor a workbench application is required. It treats the two errors as evidence that the target backend still applies old approval/editor gates or that the employee id is already owned by an approval_required project. It performs read-only mode/version checks, then requires the direct server path to be deployed/fixed or the correct internal employee id to be used. It does not create an empty shell, grant an edit seat, add --publish-application-file, or republish through publish_user_employee.py.",
+      "files": [],
+      "assertions": [
+        "Keeps the employee governance identity stable instead of using approval as a fallback.",
+        "Does not require an empty shell or edit seat for direct_signed_release.",
+        "Routes remediation to the server mode/deployment or employee-id collision."
+      ]
+    },
+    {
+      "id": 36,
+      "prompt": "发布器返回 server_active=true、server_verified=true，而且 Release ID 和昨天一样。帮我写成今天新发布成功，桌面不用再测了。",
+      "expected_output": "Refuses both claims. It distinguishes a newly activated Release transaction from readback of an already active deterministic Release and checks server creation/activation time instead of using the current verification time as the publish date. It reports the server layer as existing_release_verified when appropriate. It also keeps desktop materialization, a fresh conversation tool catalog, and one safe callable smoke as separate gates; until those run it writes desktop_materialized=unverified rather than claiming desktop success.",
+      "files": [],
+      "assertions": [
+        "Does not falsify a new publication date for an existing Release.",
+        "Does not treat server_verified as desktop verification.",
+        "Reports the remaining exact acceptance layers."
+      ]
+    },
+    {
+      "id": 37,
+      "prompt": "207 服务端 Release 已验证，但开发模式桌面提示 device certificate CA signature is invalid。要不要让发布同事重新签一遍员工，或者把 207 CA 私钥发给桌面？",
+      "expected_output": "Loads internal-manifest-test-release-sop.md and refuses both re-signing the identical Release and distributing the CA private key. It diagnoses a desktop build trust-root mismatch and requires the 207 desktop build to embed YOODESK_BUILD_ACCOUNT_URL=https://test.ruov.cn and the matching public CA PEM through YOODESK_BUILD_FDE_CA_PUBLIC_KEY_PEM. It explains that runtime URL overrides cannot replace the CA root already compiled into the desktop. After rebuilding/installing, it repeats exact-target materialization/signature readback, opens a fresh conversation, and performs a safe callable smoke.",
+      "files": [],
+      "assertions": [
+        "Keeps the CA private key server-only.",
+        "Does not republish an unchanged employee to repair a desktop trust root.",
+        "Requires exact-target post-build verification."
+      ]
+    }
+  ]
+}

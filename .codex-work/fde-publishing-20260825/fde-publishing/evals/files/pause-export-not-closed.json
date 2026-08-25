@@ -1,0 +1,20 @@
+{
+  "schema": "yoodesk.fde/drift-eval-fixture/v1",
+  "employeeId": "agency-ops-meituan-review-reply",
+  "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "activeReleaseSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "materializedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "batchSnapshotSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "batchId": "batch-pause-a",
+  "pauseRequestedAt": "2026-08-06T03:00:00Z",
+  "control": {"status": "completed"},
+  "samples": [
+    {"offsetSeconds": 2, "status": "paused", "writerAlive": false},
+    {"offsetSeconds": 120, "status": "running", "writerAlive": true}
+  ],
+  "artifacts": {
+    "xlsxMtime": "2026-08-06T03:00:08Z",
+    "deliveredToConversation": false
+  },
+  "replacementBatchCreated": false
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "yoodesk.fde/drift-eval-fixture/v1",
+  "employeeId": "crf-chatcut-video-director-pro",
+  "previousRelease": {
+    "deliveryMode": "hybrid",
+    "runtimeModules": ["crf-chatcut-typed-cli"]
+  },
+  "activeRelease": {
+    "releaseId": "fde-assets-v1-new",
+    "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deliveryMode": "assets_v1",
+    "runtimeModules": [],
+    "assetsVerified": true
+  },
+  "desktopMaterialization": {
+    "releaseId": "fde-assets-v1-new",
+    "manifestHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assetsSynced": true,
+    "assetHashesMatch": true
+  },
+  "freshSidecar": {
+    "newConversation": true,
+    "runtimeSessionId": "runtime-session-new",
+    "expectedTools": ["crf-chatcut-video-task-center"],
+    "observedRemovedTools": ["crf-chatcut-typed-cli"]
+  },
+  "taskCenter": {
+    "conversationOperationVisible": true,
+    "schemaV2BatchId": null,
+    "visibleBusinessStages": []
+  }
+}

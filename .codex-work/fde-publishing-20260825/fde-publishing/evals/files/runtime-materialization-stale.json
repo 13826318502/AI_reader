@@ -1,0 +1,21 @@
+{
+  "schema": "yoodesk.fde/drift-eval-fixture/v1",
+  "requestedEnvironment": "gmxlab-38",
+  "employeeId": "employee-runtime-a",
+  "source": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "bdshMirror": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "activeRelease": {
+    "releaseId": "fde-release-new",
+    "manifestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "assetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "serverVerified": true
+  },
+  "materializedRuntime": {
+    "releaseId": "fde-release-old",
+    "manifestHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "assetSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "assetsSynced": true
+  },
+  "sidecar": {"startedBeforeRelease": true, "toolsSnapshot": "old"},
+  "batch": {"startedBeforeRelease": true, "snapshotSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+}
