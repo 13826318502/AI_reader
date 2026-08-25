@@ -3999,7 +3999,7 @@ class AiGalleryStore {
     required int category,
     required String prompt,
     String? image,
-  }) {
+  }) async {
     const previews = [
       'assets/cover_shanhai.png',
       'assets/ai_portrait.png',
