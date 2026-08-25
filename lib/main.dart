@@ -54,7 +54,10 @@ class AiImageStorage {
   static Future<int> sizeBytes() async {
     final folder = await directory();
     var total = 0;
-    await for (final entity in folder.list(recursive: true, followLinks: false)) {
+    await for (final entity in folder.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is File) total += await entity.length();
     }
     return total;
@@ -62,7 +65,10 @@ class AiImageStorage {
 
   static Future<void> clear() async {
     final folder = await directory();
-    await for (final entity in folder.list(recursive: false, followLinks: false)) {
+    await for (final entity in folder.list(
+      recursive: false,
+      followLinks: false,
+    )) {
       await entity.delete(recursive: true);
     }
   }
@@ -728,10 +734,11 @@ class _BookDetailState extends State<BookDetail> {
     final work = await ImportedWorkStore.load();
     final p = await SharedPreferences.getInstance();
     final savedChapter = p.getInt('reading_chapter_$title') ?? 1;
-    if (mounted) setState(() {
-      if (work?.title == title) importedWork = work;
-      lastChapter = savedChapter;
-    });
+    if (mounted)
+      setState(() {
+        if (work?.title == title) importedWork = work;
+        lastChapter = savedChapter;
+      });
   }
 
   String get asset => title.contains('长夜')
@@ -941,7 +948,10 @@ class _BookDetailState extends State<BookDetail> {
                         const SizedBox(height: 8),
                         Text(
                           '上次阅读：第${lastChapter}章',
-                          style: const TextStyle(color: Colors.black54, fontSize: 10),
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 10,
+                          ),
                         ),
                       ],
                     ),
@@ -1210,11 +1220,16 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         final chapter = work.chapters[i];
         final preview = chapter.content.trim();
         if (preview.isEmpty) continue;
-        loaded.add((work.title, '第${i + 1}章 · ${chapter.title}', preview.substring(0, preview.length.clamp(0, 120))));
+        loaded.add((
+          work.title,
+          '第${i + 1}章 · ${chapter.title}',
+          preview.substring(0, preview.length.clamp(0, 120)),
+        ));
       }
     }
     if (mounted) setState(() => results = loaded);
   }
+
   @override
   void dispose() {
     controller.dispose();
@@ -1919,8 +1934,14 @@ class _ReaderPageState extends State<ReaderPage> {
                         currentPage = page;
                         _syncBookmarkForCurrentPage();
                         SharedPreferences.getInstance().then((p) {
-                          p.setInt('reading_page_${widget.bookTitle}_${widget.chapter}', page);
-                          p.setInt('reading_chapter_${widget.bookTitle}', widget.chapter);
+                          p.setInt(
+                            'reading_page_${widget.bookTitle}_${widget.chapter}',
+                            page,
+                          );
+                          p.setInt(
+                            'reading_chapter_${widget.bookTitle}',
+                            widget.chapter,
+                          );
                         });
                       },
                       children: [
@@ -3945,19 +3966,26 @@ class AiGalleryStore {
     final raw = p.getStringList(storageKey) ?? const [];
     items
       ..clear()
-      ..addAll(raw.map((value) {
-        try {
-          final json = jsonDecode(value);
-          return json is Map ? _AiGalleryItem.fromJson(Map<String, dynamic>.from(json)) : null;
-        } catch (_) {
-          return null;
-        }
-      }).whereType<_AiGalleryItem>());
+      ..addAll(
+        raw.map((value) {
+          try {
+            final json = jsonDecode(value);
+            return json is Map
+                ? _AiGalleryItem.fromJson(Map<String, dynamic>.from(json))
+                : null;
+          } catch (_) {
+            return null;
+          }
+        }).whereType<_AiGalleryItem>(),
+      );
   }
 
   static Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
-    await p.setStringList(storageKey, items.map((item) => jsonEncode(item.toJson())).toList());
+    await p.setStringList(
+      storageKey,
+      items.map((item) => jsonEncode(item.toJson())).toList(),
+    );
   }
 
   static Future<void> clear() async {
@@ -4024,7 +4052,10 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
       .toList();
 
   Future<void> _importImage() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
     if (!mounted) return;
     if (result != null && result.files.single.bytes != null) {
       final folder = await AiImageStorage.directory();
@@ -4577,7 +4608,12 @@ class _WorldsState extends State<Worlds> {
     for (final key in ['region', 'power', 'era']) {
       loaded[key] = p.getString('world_${title}_$key') ?? '';
     }
-    if (mounted) setState(() { worldSettings..clear()..addAll(loaded); });
+    if (mounted)
+      setState(() {
+        worldSettings
+          ..clear()
+          ..addAll(loaded);
+      });
   }
 
   Future<void> _editWorldSetting(String key, String title) async {
@@ -4586,10 +4622,20 @@ class _WorldsState extends State<Worlds> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('编辑$title'),
-        content: TextField(controller: controller, maxLines: 4, autofocus: true),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          autofocus: true,
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -4791,7 +4837,11 @@ class _WorldsState extends State<Worlds> {
                   ),
                   SizedBox(height: 18),
                   _worldSettingRow(Icons.map_outlined, 'region', '地域设定'),
-                  _worldSettingRow(Icons.auto_awesome_outlined, 'power', '力量体系'),
+                  _worldSettingRow(
+                    Icons.auto_awesome_outlined,
+                    'power',
+                    '力量体系',
+                  ),
                   _worldSettingRow(Icons.history_edu_outlined, 'era', '时代背景'),
                 ],
               ),
@@ -5679,7 +5729,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
         title: const Text('清理 AI 图片缓存？'),
         content: const Text('这会删除本机保存的 AI 生成图片和导入图片。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -5695,16 +5748,23 @@ class _DataManagementPageState extends State<DataManagementPage> {
     await _refreshCacheSize();
     if (mounted) {
       setState(() => clearingCache = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AI 图片缓存已清理')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('AI 图片缓存已清理')));
     }
   }
 
   Future<void> _clearReadingRecords() async {
     final p = await SharedPreferences.getInstance();
-    for (final key in p.getKeys().where((key) => key.startsWith('bookmark_'))) {
+    for (final key in p.getKeys().where(
+      (key) => key.startsWith('bookmark_') || key.startsWith('reading_'),
+    )) {
       await p.remove(key);
     }
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('阅读记录已清空')));
+    if (mounted)
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('阅读记录已清空')));
   }
 
   Future<void> _openAiImageFolder() async {
@@ -5744,10 +5804,18 @@ class _DataManagementPageState extends State<DataManagementPage> {
               ListTile(
                 leading: const Icon(Icons.image_outlined, color: gold),
                 title: const Text('AI 图片缓存'),
-                subtitle: Text('已占用 ${_formatBytes(cacheBytes)}', style: const TextStyle(fontSize: 11)),
+                subtitle: Text(
+                  '已占用 ${_formatBytes(cacheBytes)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 trailing: TextButton(
-                  onPressed: clearingCache || cacheBytes == 0 ? null : _clearImageCache,
-                  child: Text(clearingCache ? '清理中…' : '清理', style: const TextStyle(color: gold)),
+                  onPressed: clearingCache || cacheBytes == 0
+                      ? null
+                      : _clearImageCache,
+                  child: Text(
+                    clearingCache ? '清理中…' : '清理',
+                    style: const TextStyle(color: gold),
+                  ),
                 ),
               ),
               ListTile(
@@ -5771,4 +5839,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 title: const Text('清空阅读记录'),
                 trailing: TextButton(
                   onPressed: _clearReadingRecords,
-                  child: const Text('清空', style: TextStyle(col
+                  child: const Text('清空', style: TextStyle(color: gold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
