@@ -1,0 +1,5 @@
+schema: yoodesk.skill-card/v1
+id: qyff_hello_only_primary
+display_name: 固定回复“你好”
+channel: chat
+priority: 100

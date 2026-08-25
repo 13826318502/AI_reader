@@ -1,0 +1,15 @@
+{
+  "schema": "yoodesk.fde/drift-eval-fixture/v1",
+  "employeeId": "employee-runtime-a",
+  "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "activeReleaseSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "materializedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "releaseActivatedAt": "2026-08-06T02:00:00Z",
+  "batch": {
+    "batchId": "batch-before-release",
+    "startedAt": "2026-08-06T01:00:00Z",
+    "snapshotSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "attestationHashMatchesFiles": true,
+    "status": "paused"
+  }
+}

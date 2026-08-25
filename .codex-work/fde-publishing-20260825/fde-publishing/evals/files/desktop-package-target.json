@@ -1,0 +1,15 @@
+{
+  "schema": "yoodesk.fde/drift-eval-fixture/v1",
+  "requestedEnvironment": "gmxlab-38",
+  "requestedAccountUrl": "https://yoodesk.gmxlab.ai",
+  "build": {
+    "yoodeskBuildAccountUrl": "",
+    "yoodeskBuildFdeCaPublicKeyPemConfigured": false,
+    "compiledAccountUrl": "http://101.96.213.47"
+  },
+  "installedApp": {
+    "accountUrl": "http://101.96.213.47",
+    "employeeCardVisible": true,
+    "employeeCardEvidenceSource": "unknown"
+  }
+}

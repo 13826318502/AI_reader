@@ -1,0 +1,14 @@
+{
+  "schema": "yoodesk.fde/local-package/v1",
+  "module_id": "qyff-hello-only-20260825",
+  "employee": "employee.yaml",
+  "soul": "SOUL.md",
+  "cards": ["cards/primary.yaml"],
+  "assets": [
+    {
+      "path": "assets/data/behavior.md",
+      "kind": "data",
+      "rel_path": "data/behavior.md"
+    }
+  ]
+}
