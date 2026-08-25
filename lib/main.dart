@@ -185,7 +185,7 @@ class AiImageService {
   static Future<String> generate({
     required String prompt,
     String size = '1024x1024',
-    String? referenceBase64,
+    List<String>? referenceImages,
   }) async {
     final p = await SharedPreferences.getInstance();
     final key = (p.getString('ai_api_key') ?? '').trim().replaceFirst(
@@ -215,8 +215,17 @@ class AiImageService {
       'size': isArk ? '2K' : size,
       'response_format': 'url',
     };
-    if (referenceBase64 != null && referenceBase64.isNotEmpty) {
-      body['image'] = referenceBase64;
+    if (referenceImages != null && referenceImages.isNotEmpty) {
+      if (referenceImages.length == 1) {
+        // 单张参考图沿用原有字段格式。
+        body['image'] = referenceImages.first;
+      } else {
+        // 多张参考图按导入顺序发送，text 字段用于让模型区分每张图片的次序。
+        body['image'] = [
+          for (var i = 0; i < referenceImages.length; i++)
+            {'image': referenceImages[i], 'text': '参考图${i + 1}'},
+        ];
+      }
     }
     if (isArk) {
       body.addAll({
@@ -591,7 +600,10 @@ class _ShelfState extends State<Shelf> {
     if (!isImported) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('内置示例作品不能删除')));
+      ).showSnackBar(const SnackBar(
+                        content: Text('内置示例作品不能删除'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
       return;
     }
     await p.remove('latest_imported_work');
@@ -599,7 +611,10 @@ class _ShelfState extends State<Shelf> {
     setState(() => books.removeWhere((book) => book[1] == title));
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('作品已删除')));
+    ).showSnackBar(const SnackBar(
+                        content: Text('作品已删除'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
   }
 
   Widget _listBook(BuildContext context, List<String> b) => Padding(
@@ -782,14 +797,20 @@ class _BookDetailState extends State<BookDetail> {
     if (!isImported) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('内置示例作品不能删除')));
+      ).showSnackBar(const SnackBar(
+                        content: Text('内置示例作品不能删除'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
       return;
     }
     await p.remove('latest_imported_work');
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('作品已删除')));
+    ).showSnackBar(const SnackBar(
+                        content: Text('作品已删除'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
     Navigator.pop(context, true);
   }
 
@@ -1172,7 +1193,13 @@ class _BookDetailState extends State<BookDetail> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ReaderPage(
-                        chapter: isImported ? 1 : 2,
+                        chapter: isImported
+                            ? (lastChapter < 1
+                                  ? 1
+                                  : (lastChapter > chapterCount
+                                        ? chapterCount
+                                        : lastChapter))
+                            : 2,
                         bookTitle: title,
                       ),
                     ),
@@ -1395,73 +1422,184 @@ class _ReaderPageState extends State<ReaderPage> {
   final PageController readingPages = PageController();
   int currentPage = 0;
   final List<_ReaderBookmark> bookmarks = [];
+  final Set<int> bookmarkedPages = {};
+  bool _ready = false;
+  int _savedChapterPage = 0;
+  static const int _charsPerPage = 560;
 
   @override
   void initState() {
     super.initState();
-    _loadBookmark();
-    _loadImportedWork();
+    _init();
   }
 
-  Future<void> _loadImportedWork() async {
+  Future<void> _init() async {
     final work = await ImportedWorkStore.load();
-    if (mounted && work?.title == widget.bookTitle) {
-      setState(() => importedWork = work);
-    }
+    if (!mounted) return;
+    setState(() {
+      importedWork = work?.title == widget.bookTitle ? work : null;
+      _ready = true;
+    });
+    await _loadBookmarks();
+    if (!mounted) return;
+    setState(() {
+      currentPage = _initialGlobalPage();
+      bookmarked = bookmarkedPages.contains(currentPage);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && readingPages.hasClients) {
+        readingPages.jumpToPage(currentPage);
+      }
+    });
   }
 
-  List<Widget> _buildImportedPages() {
-    final chapters = importedWork?.chapters ?? const <_ParsedChapter>[];
-    if (widget.chapter < 1 || widget.chapter > chapters.length) {
-      return [
-        const _ReadingPageContent(
-          children: [Text('找不到该章节内容', style: TextStyle(fontSize: 18))],
-        ),
-      ];
+  List<int> get _chapterPageCounts {
+    final chapters = importedWork?.chapters;
+    if (chapters == null) return List.filled(12, 2);
+    return [
+      for (final c in chapters)
+        c.content.trim().isEmpty
+            ? 1
+            : (c.content.trim().length / _charsPerPage).ceil(),
+    ];
+  }
+
+  List<int> get _chapterStartPages {
+    final counts = _chapterPageCounts;
+    final starts = <int>[0];
+    for (var i = 0; i < counts.length - 1; i++) {
+      starts.add(starts[i] + counts[i]);
     }
-    final chapterTitle = chapters[widget.chapter - 1].title;
-    final content = chapters[widget.chapter - 1].content.trim();
-    if (content.isEmpty) {
-      return [
-        const _ReadingPageContent(
-          children: [Text('本章节暂无正文内容', style: TextStyle(fontSize: 18))],
-        ),
-      ];
+    return starts;
+  }
+
+  int get _totalPages => _chapterPageCounts.fold(0, (sum, n) => sum + n);
+
+  int get _chapterCount => importedWork?.chapters.length ?? 12;
+
+  int _clampInt(int value, int min, int max) =>
+      value < min ? min : (value > max ? max : value);
+
+  (int, int) _locationOf(int globalPage) {
+    final starts = _chapterStartPages;
+    var chapter = 0;
+    for (var i = 1; i < starts.length; i++) {
+      if (globalPage >= starts[i]) {
+        chapter = i;
+      } else {
+        break;
+      }
     }
-    final pages = <Widget>[];
-    for (var start = 0; start < content.length; start += 560) {
-      final end = (start + 560).clamp(0, content.length);
-      pages.add(
-        _ReadingPageContent(
-          children: [
-            if (start == 0) ...[
-              Text(
-                '第${widget.chapter}章',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                chapterTitle,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: gold,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 20),
+    return (chapter, globalPage - starts[chapter]);
+  }
+
+  int _globalPageOf(int chapterIndex, int pageInChapter) =>
+      _chapterStartPages[chapterIndex] + pageInChapter;
+
+  int get _currentChapterIndex => _locationOf(currentPage).$1;
+  int get _currentChapterNumber => _currentChapterIndex + 1;
+  int get _currentPageInChapter => _locationOf(currentPage).$2;
+
+  int _initialGlobalPage() {
+    final counts = _chapterPageCounts;
+    final chapterIndex = _clampInt(widget.chapter - 1, 0, _chapterCount - 1);
+    final saved = _clampInt(_savedChapterPage, 0, counts[chapterIndex] - 1);
+    return _clampInt(
+      _chapterStartPages[chapterIndex] + saved,
+      0,
+      _totalPages - 1,
+    );
+  }
+
+  String _chapterHeaderText(int chapterNumber, String title) {
+    final numbered =
+        RegExp(r'^第[0-9零一二三四五六七八九十百千万两]+[章节回卷集]').hasMatch(
+          title,
+        ) ||
+        RegExp(r'^Chapter\s+\d+', caseSensitive: false).hasMatch(title);
+    return numbered ? title : '第$chapterNumber章 · $title';
+  }
+
+  Widget _buildChapterHeader(int chapterIndex) {
+    final title = importedWork?.chapters[chapterIndex].title ??
+        (chapterIndex + 1 == 2 ? '青梅不太对劲' : '山海来信');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _chapterHeaderText(chapterIndex + 1, title),
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: gold,
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildDemoPage(int chapterIndex, int pageInChapter) {
+    final children = <Widget>[];
+    if (pageInChapter == 0) children.add(_buildChapterHeader(chapterIndex));
+    children.addAll(
+      pageInChapter == 0
+          ? const [
+              Text('红烛摇曳，簌字高悬。', style: TextStyle(fontSize: 18, height: 2.05)),
+              SizedBox(height: 18),
+              Text('“这是哪里？”', style: TextStyle(fontSize: 18, height: 2.05)),
+              SizedBox(height: 18),
+              Text('顾今朝从铺着鸳鸯锦被的床榻上醒来，茫然望着头顶绣着鸳鸯的锦帐。',
+                  style: TextStyle(fontSize: 18, height: 2.05)),
+              SizedBox(height: 18),
+              Text('“师兄醒了？”', style: TextStyle(fontSize: 18, height: 2.05)),
+            ]
+          : const [
+              Text('一道轻如烟絮的嗓音飘入耳中，带着几分缠绵，几分幽怨。',
+                  style: TextStyle(fontSize: 18, height: 2.05)),
+              SizedBox(height: 18),
+              Text('他微力侧过头，正对上了一双含情带怨的美眸。',
+                  style: TextStyle(fontSize: 18, height: 2.05)),
+              SizedBox(height: 18),
+              Text('林静茹穿着一袭大红嫁衣，红盖头已掀开，露出一张略显苍白的俏脸。',
+                  style: TextStyle(
+                    fontSize: 18,
+                    height: 2.05,
+                    color: Colors.black87,
+                  )),
             ],
-            Text(
-              content.substring(start, end),
-              style: const TextStyle(fontSize: 18, height: 2.05),
-            ),
-          ],
-        ),
+    );
+    return _ReadingPageContent(children: children);
+  }
+
+  Widget _buildPage(int globalPage) {
+    final (chapterIndex, pageInChapter) = _locationOf(globalPage);
+    final chapters = importedWork?.chapters;
+    if (chapters == null) return _buildDemoPage(chapterIndex, pageInChapter);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) {
+      return const _ReadingPageContent(
+        children: [Text('找不到该章节内容', style: TextStyle(fontSize: 18))],
       );
     }
-    return pages;
+    final content = chapters[chapterIndex].content.trim();
+    if (content.isEmpty) {
+      return const _ReadingPageContent(
+        children: [Text('本章节暂无正文内容', style: TextStyle(fontSize: 18))],
+      );
+    }
+    final start = pageInChapter * _charsPerPage;
+    final end = start + _charsPerPage > content.length
+        ? content.length
+        : start + _charsPerPage;
+    return _ReadingPageContent(
+      children: [
+        if (pageInChapter == 0) _buildChapterHeader(chapterIndex),
+        Text(
+          content.substring(start, end),
+          style: const TextStyle(fontSize: 18, height: 2.05),
+        ),
+      ],
+    );
   }
 
   @override
@@ -1470,67 +1608,83 @@ class _ReaderPageState extends State<ReaderPage> {
     super.dispose();
   }
 
-  Future<void> _loadBookmark() async {
+  String get _bookmarksKey => 'bookmarks_${widget.bookTitle}';
+
+  Future<void> _loadBookmarks() async {
     final p = await SharedPreferences.getInstance();
-    final savedPage = p.getInt(
-      'bookmark_page_${widget.bookTitle}_${widget.chapter}',
-    );
-    final isCurrentPage =
-        (p.getBool('bookmark_${widget.bookTitle}_${widget.chapter}') ??
-            false) &&
-        savedPage == currentPage;
-    if (mounted && isCurrentPage) {
+    final loaded = <_ReaderBookmark>[];
+    final pages = <int>{};
+    final raw = p.getStringList(_bookmarksKey) ?? const <String>[];
+    for (final item in raw) {
+      final parts = item.split(':');
+      if (parts.length != 2) continue;
+      final c = int.tryParse(parts[0]);
+      final pg = int.tryParse(parts[1]);
+      if (c == null || pg == null || c < 1 || c > _chapterCount) continue;
+      if (pg < 0 || pg >= _chapterPageCounts[c - 1]) continue;
+      loaded.add(_ReaderBookmark(c, pg, '红烛摇曳，簌字高悬。'));
+      final global = _globalPageOf(c - 1, pg);
+      if (global >= 0 && global < _totalPages) pages.add(global);
+    }
+    for (var i = 1; i <= _chapterCount; i++) {
+      final legacy = p.getBool('bookmark_${widget.bookTitle}_$i') ?? false;
+      final pg = p.getInt('bookmark_page_${widget.bookTitle}_$i');
+      if (legacy &&
+          pg != null &&
+          pg >= 0 &&
+          pg < _chapterPageCounts[i - 1] &&
+          !loaded.any((b) => b.chapter == i && b.page == pg)) {
+        loaded.add(_ReaderBookmark(i, pg, '红烛摇曳，簌字高悬。'));
+        final global = _globalPageOf(i - 1, pg);
+        if (global >= 0 && global < _totalPages) pages.add(global);
+      }
+    }
+    _savedChapterPage =
+        p.getInt('reading_page_${widget.bookTitle}_${widget.chapter}') ?? 0;
+    if (mounted) {
       setState(() {
-        bookmarked = true;
-        bookmarks.add(
-          _ReaderBookmark(widget.chapter, currentPage, '红烛摇曳，簌字高悬。'),
-        );
+        bookmarks..clear()..addAll(loaded);
+        bookmarkedPages..clear()..addAll(pages);
       });
     }
   }
 
-  Future<void> _syncBookmarkForCurrentPage() async {
+  Future<void> _persistBookmarks() async {
     final p = await SharedPreferences.getInstance();
-    final saved =
-        (p.getBool('bookmark_${widget.bookTitle}_${widget.chapter}') ??
-            false) &&
-        p.getInt('bookmark_page_${widget.bookTitle}_${widget.chapter}') ==
-            currentPage;
-    if (!mounted) return;
-    setState(() {
-      bookmarked = saved;
-      if (saved &&
-          !bookmarks.any(
-            (b) => b.chapter == widget.chapter && b.page == currentPage,
-          )) {
-        bookmarks.add(
-          _ReaderBookmark(widget.chapter, currentPage, '红烛摇曳，簌字高悬。'),
-        );
-      } else if (!saved) {
-        bookmarks.removeWhere(
-          (b) => b.chapter == widget.chapter && b.page == currentPage,
-        );
-      }
+    await p.setStringList(
+      _bookmarksKey,
+      bookmarks.map((b) => '${b.chapter}:${b.page}').toList(),
+    );
+  }
+
+  void _persistReadingPosition() {
+    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
+    SharedPreferences.getInstance().then((p) {
+      p.setInt(
+        'reading_page_${widget.bookTitle}_${chapterIndex + 1}',
+        pageInChapter,
+      );
+      p.setInt('reading_chapter_${widget.bookTitle}', chapterIndex + 1);
     });
   }
 
   Future<void> _markBookmark() async {
-    if (!bookmarked) setState(() => bookmarked = true);
-    if (!bookmarks.any(
-      (b) => b.chapter == widget.chapter && b.page == currentPage,
-    )) {
+    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
+    final chapter = chapterIndex + 1;
+    if (!bookmarked) {
+      setState(() {
+        bookmarked = true;
+        bookmarkedPages.add(currentPage);
+      });
+    }
+    if (!bookmarks.any((b) => b.chapter == chapter && b.page == pageInChapter)) {
       setState(
         () => bookmarks.add(
-          _ReaderBookmark(widget.chapter, currentPage, '红烛摇曳，簌字高悬。'),
+          _ReaderBookmark(chapter, pageInChapter, '红烛摇曳，簌字高悬。'),
         ),
       );
     }
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('bookmark_${widget.bookTitle}_${widget.chapter}', true);
-    await p.setInt(
-      'bookmark_page_${widget.bookTitle}_${widget.chapter}',
-      currentPage,
-    );
+    await _persistBookmarks();
   }
 
   Future<void> _addBookmark() async {
@@ -1542,12 +1696,14 @@ class _ReaderPageState extends State<ReaderPage> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           backgroundColor: gold,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(milliseconds: 1200),
           content: Row(
             children: [
               const Icon(Icons.bookmark, color: Colors.white),
               const SizedBox(width: 8),
-              Text('书签已添加 · 第${widget.chapter}章 · 第${currentPage + 1}页'),
+              Text(
+                '书签已添加 · 第$_currentChapterNumber章 · 第${_currentPageInChapter + 1}页',
+              ),
             ],
           ),
         ),
@@ -1557,62 +1713,58 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Future<void> _toggleBookmark() async {
     if (bookmarked) {
-      final p = await SharedPreferences.getInstance();
-      await p.setBool('bookmark_${widget.bookTitle}_${widget.chapter}', false);
-      await p.remove('bookmark_page_${widget.bookTitle}_${widget.chapter}');
-      if (!mounted) return;
-      setState(() {
-        bookmarked = false;
-        bookmarks.removeWhere(
-          (b) => b.chapter == widget.chapter && b.page == currentPage,
-        );
-      });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text('书签已删除'),
-          ),
-        );
-      return;
+      await _unmarkCurrentBookmark();
+    } else {
+      await _addBookmark();
     }
-    await _addBookmark();
+  }
+
+  Future<void> _unmarkCurrentBookmark() async {
+    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
+    if (!mounted) return;
+    setState(() {
+      bookmarked = false;
+      bookmarkedPages.remove(currentPage);
+      bookmarks.removeWhere(
+        (b) => b.chapter == chapterIndex + 1 && b.page == pageInChapter,
+      );
+    });
+    await _persistBookmarks();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(milliseconds: 1200),
+          content: Text('书签已删除'),
+        ),
+      );
   }
 
   Future<void> _deleteBookmark(
     _ReaderBookmark bookmark, [
     VoidCallback? refreshSheet,
   ]) async {
-    final remaining = bookmarks
-        .where(
-          (b) =>
-              b.chapter == bookmark.chapter &&
-              !(b.chapter == bookmark.chapter && b.page == bookmark.page),
-        )
-        .toList();
     setState(() {
       bookmarks.removeWhere(
         (b) => b.chapter == bookmark.chapter && b.page == bookmark.page,
       );
-      if (bookmark.chapter == widget.chapter && bookmark.page == currentPage) {
-        bookmarked = false;
+      if (bookmark.chapter >= 1 && bookmark.chapter <= _chapterCount) {
+        final global = _globalPageOf(bookmark.chapter - 1, bookmark.page);
+        bookmarkedPages.remove(global);
+        if (bookmark.chapter == _currentChapterNumber &&
+            bookmark.page == _currentPageInChapter) {
+          bookmarked = false;
+        }
       }
     });
-    if (bookmark.chapter == widget.chapter && bookmark.page == currentPage) {
-      final p = await SharedPreferences.getInstance();
-      await p.setBool('bookmark_${widget.bookTitle}_${widget.chapter}', false);
-      await p.remove('bookmark_page_${widget.bookTitle}_${widget.chapter}');
-    } else if (remaining.isEmpty && bookmark.chapter == widget.chapter) {
-      final p = await SharedPreferences.getInstance();
-      await p.setBool('bookmark_${widget.bookTitle}_${widget.chapter}', false);
-      await p.remove('bookmark_page_${widget.bookTitle}_${widget.chapter}');
-    }
+    await _persistBookmarks();
     refreshSheet?.call();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: 1200),
         content: Text('书签已删除'),
       ),
     );
@@ -1671,9 +1823,12 @@ class _ReaderPageState extends State<ReaderPage> {
     );
     controller.dispose();
     if (!mounted || value == null || value.trim().isEmpty) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('标签已添加：${value.trim()}')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(milliseconds: 1200),
+        content: Text('标签已添加：${value.trim()}'),
+      ),
+    );
   }
 
   Future<void> _finishPullDown() async {
@@ -1704,10 +1859,10 @@ class _ReaderPageState extends State<ReaderPage> {
 
   String get chapterName {
     final chapters = importedWork?.chapters ?? const <_ParsedChapter>[];
-    if (widget.chapter >= 1 && widget.chapter <= chapters.length) {
-      return chapters[widget.chapter - 1].title;
+    if (_currentChapterIndex >= 0 && _currentChapterIndex < chapters.length) {
+      return chapters[_currentChapterIndex].title;
     }
-    return widget.chapter == 2 ? '青梅不太对劲' : '山海来信';
+    return _currentChapterIndex + 1 == 2 ? '青梅不太对劲' : '山海来信';
   }
 
   void _showChapters() {
@@ -1753,8 +1908,12 @@ class _ReaderPageState extends State<ReaderPage> {
                                           trailing: Text('第${b.page + 1}页'),
                                           onTap: () {
                                             Navigator.pop(context);
-                                            if (b.chapter == widget.chapter)
-                                              readingPages.jumpToPage(b.page);
+                                            readingPages.jumpToPage(
+                                              _globalPageOf(
+                                                b.chapter - 1,
+                                                b.page,
+                                              ),
+                                            );
                                           },
                                         ),
                                       ),
@@ -1787,7 +1946,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 style: const TextStyle(color: gold),
               ),
               title: Text(entry.value.title),
-              trailing: entry.key + 1 == widget.chapter
+              trailing: entry.key + 1 == _currentChapterNumber
                   ? const Icon(Icons.check, color: gold)
                   : null,
               onTap: () {
@@ -1811,7 +1970,7 @@ class _ReaderPageState extends State<ReaderPage> {
       (i) => ListTile(
         leading: Text('${i + 1}', style: const TextStyle(color: gold)),
         title: Text('第${i + 1}章 · ${i == 1 ? '青梅不太对劲' : '山海来信'}'),
-        trailing: i + 1 == widget.chapter
+        trailing: i + 1 == _currentChapterNumber
             ? const Icon(Icons.check, color: gold)
             : null,
         onTap: () {
@@ -1834,7 +1993,7 @@ class _ReaderPageState extends State<ReaderPage> {
       backgroundColor: background,
       builder: (_) => StatefulBuilder(
         builder: (context, setSheetState) {
-          double value = widget.chapter / 12;
+          double value = _currentChapterNumber / _chapterCount;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -1848,7 +2007,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '第${widget.chapter}章 / 12章',
+                    '第$_currentChapterNumber章 / $_chapterCount章',
                     style: const TextStyle(color: Colors.black54),
                   ),
                   Slider(
@@ -1873,17 +2032,24 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: background,
-    appBar: focused
-        ? AppBar(
-            backgroundColor: background,
-            title: Text(
-              '第${widget.chapter.toString()}章、$chapterName',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-            ),
-            actions: focused
-                ? [
+  Widget build(BuildContext context) {
+    final readerProgress = _totalPages == 0
+        ? 0.0
+        : (currentPage + 1) / _totalPages;
+    return Scaffold(
+      backgroundColor: background,
+      appBar: focused
+          ? AppBar(
+              backgroundColor: background,
+              title: Text(
+                '第$_currentChapterNumber章、$chapterName',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              actions: focused
+                  ? [
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_horiz),
                       onSelected: (value) {
@@ -1928,89 +2094,27 @@ class _ReaderPageState extends State<ReaderPage> {
                       Colors.black.withOpacity((1 - brightness) * .35),
                       BlendMode.darken,
                     ),
-                    child: PageView(
+                    child: PageView.builder(
                       controller: readingPages,
                       onPageChanged: (page) {
-                        currentPage = page;
-                        _syncBookmarkForCurrentPage();
-                        SharedPreferences.getInstance().then((p) {
-                          p.setInt(
-                            'reading_page_${widget.bookTitle}_${widget.chapter}',
-                            page,
-                          );
-                          p.setInt(
-                            'reading_chapter_${widget.bookTitle}',
-                            widget.chapter,
-                          );
+                        setState(() {
+                          currentPage = page;
+                          bookmarked = bookmarkedPages.contains(page);
                         });
+                        _persistReadingPosition();
                       },
-                      children: [
-                        if (importedWork != null) ..._buildImportedPages(),
-                        if (importedWork == null) ...[
-                          _ReadingPageContent(
-                            children: [
-                              Text(
-                                '第${widget.chapter}章',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
+                      itemCount: _ready ? _totalPages : 1,
+                      itemBuilder: (_, page) => _ready
+                          ? _buildPage(page)
+                          : const _ReadingPageContent(
+                              children: [
+                                SizedBox(height: 24),
+                                Text(
+                                  '加载中…',
+                                  style: TextStyle(color: Colors.black54),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                chapterName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: gold,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                '红烛摇曳，簌字高悬。',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                              SizedBox(height: 18),
-                              Text(
-                                '“这是哪里？”',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                              SizedBox(height: 18),
-                              Text(
-                                '顾今朝从铺着鸳鸯锦被的床榻上醒来，茫然望着头顶绣着鸳鸯的锦帐。',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                              SizedBox(height: 18),
-                              Text(
-                                '“师兄醒了？”',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                            ],
-                          ),
-                          _ReadingPageContent(
-                            children: const [
-                              Text(
-                                '一道轻如烟絮的嗓音飘入耳中，带着几分缠绵，几分幽怨。',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                              SizedBox(height: 18),
-                              Text(
-                                '他微力侧过头，正对上了一双含情带怨的美眸。',
-                                style: TextStyle(fontSize: 18, height: 2.05),
-                              ),
-                              SizedBox(height: 18),
-                              Text(
-                                '林静茹穿着一袭大红嫁衣，红盖头已掀开，露出一张略显苍白的俏脸。',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  height: 2.05,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
+                              ],
+                            ),
                     ),
                   ),
                 ),
@@ -2027,17 +2131,19 @@ class _ReaderPageState extends State<ReaderPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${widget.chapter}/${importedWork?.chapters.length ?? 12}',
+                              '$_currentChapterNumber/$_chapterCount',
                               style: const TextStyle(
                                 fontSize: 10,
                                 color: Colors.black54,
                               ),
                             ),
-                            const Expanded(
+                            Expanded(
                               child: Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
                                 child: LinearProgressIndicator(
-                                  value: .18,
+                                  value: readerProgress,
                                   minHeight: 3,
                                   color: gold,
                                   backgroundColor: Color(0xFFE5D8C2),
@@ -2045,7 +2151,7 @@ class _ReaderPageState extends State<ReaderPage> {
                               ),
                             ),
                             Text(
-                              '${((widget.chapter / (importedWork?.chapters.length ?? 12)) * 100).round()}%',
+                              '${(readerProgress * 100).round()}%',
                               style: const TextStyle(
                                 fontSize: 10,
                                 color: Colors.black54,
@@ -2168,6 +2274,7 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     ),
   );
+  }
 }
 
 class AiImagePage extends StatefulWidget {
@@ -2198,11 +2305,17 @@ class _AiImagePageState extends State<AiImagePage> {
       setState(() => generatedImage = localImage ?? result);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('图片生成成功')));
+      ).showSnackBar(const SnackBar(
+                        content: Text('图片生成成功'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Bad state: ', '')),
+            duration: const Duration(milliseconds: 1200),
+          ),
         );
       }
     } finally {
@@ -3473,11 +3586,17 @@ class _CharacterAiPageState extends State<CharacterAiPage> {
       setState(() => generatedImage = result);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('图片生成成功')));
+      ).showSnackBar(const SnackBar(
+                        content: Text('图片生成成功'),
+                        duration: Duration(milliseconds: 1200),
+                      ));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Bad state: ', '')),
+            duration: const Duration(milliseconds: 1200),
+          ),
         );
       }
     } finally {
@@ -3727,20 +3846,35 @@ class _WorksState extends State<Works> {
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('已选择《$title》，请点击下方“导入作品”确认')));
+      ).showSnackBar(
+        SnackBar(
+          duration: const Duration(milliseconds: 1200),
+          content: Text('已选择《$title》，请点击下方“导入作品”确认'),
+        ),
+      );
     } on FormatException catch (error) {
       if (mounted) {
         setState(() => importing = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
+        ).showSnackBar(
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text(error.message),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) {
         setState(() => importing = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('导入失败：$error')));
+        ).showSnackBar(
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text('导入失败：$error'),
+          ),
+        );
       }
     }
   }
@@ -3750,7 +3884,12 @@ class _WorksState extends State<Works> {
     if (!pendingImport || importedWork == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('请先点击上方“选择本地文件”')));
+      ).showSnackBar(
+        const SnackBar(
+          content: Text('请先点击上方“选择本地文件”'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
       return;
     }
     setState(() => importing = true);
@@ -3763,6 +3902,7 @@ class _WorksState extends State<Works> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        duration: const Duration(milliseconds: 1200),
         content: Text(
           '已导入《${importedWork!.title}》，解析出 ${importedWork!.chapters.length} 章',
         ),
@@ -3779,7 +3919,12 @@ class _WorksState extends State<Works> {
     });
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('已取消导入，可重新选择文件')));
+    ).showSnackBar(
+      const SnackBar(
+        content: Text('已取消导入，可重新选择文件'),
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
   }
 
   String _decodeText(List<int> bytes) {
@@ -4072,6 +4217,7 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        duration: const Duration(milliseconds: 1200),
         content: Text(
           result == null ? '已取消导入' : '图片已导入到${categories[category]}',
         ),
@@ -4240,6 +4386,12 @@ class _GalleryImage extends StatelessWidget {
   );
 }
 
+class _ReferenceImage {
+  final String name;
+  final String base64;
+  const _ReferenceImage({required this.name, required this.base64});
+}
+
 class BookAiGeneratePage extends StatefulWidget {
   final String title;
   const BookAiGeneratePage({required this.title, super.key});
@@ -4252,8 +4404,7 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
   int category = 0;
   bool generating = false;
   final prompt = TextEditingController();
-  String? reference;
-  String? referenceBase64;
+  final List<_ReferenceImage> references = [];
 
   @override
   void dispose() {
@@ -4262,21 +4413,35 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
   }
 
   Future<void> _pickReference() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (result == null || !mounted) return;
-    final path = result.files.single.path;
-    if (path == null) return;
-    final bytes = await File(path).readAsBytes();
-    final lowerPath = path.toLowerCase();
-    final mime = lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')
-        ? 'jpeg'
-        : lowerPath.endsWith('.webp')
-        ? 'webp'
-        : 'png';
-    setState(() {
-      reference = result.files.single.name;
-      referenceBase64 = 'data:image/$mime;base64,${base64Encode(bytes)}';
-    });
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    final List<_ReferenceImage> picked = [];
+    for (final file in result.files) {
+      final path = file.path;
+      if (path == null) continue;
+      final bytes = await File(path).readAsBytes();
+      final lowerPath = path.toLowerCase();
+      final mime = lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')
+          ? 'jpeg'
+          : lowerPath.endsWith('.webp')
+          ? 'webp'
+          : 'png';
+      picked.add(
+        _ReferenceImage(
+          name: file.name,
+          base64: 'data:image/$mime;base64,${base64Encode(bytes)}',
+        ),
+      );
+    }
+    if (picked.isEmpty) return;
+    setState(() => references.addAll(picked));
+  }
+
+  void _removeReference(int index) {
+    setState(() => references.removeAt(index));
   }
 
   Future<void> _generate() async {
@@ -4288,7 +4453,9 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
         prompt:
             '${prompt.text.trim()}，${categoryName}类小说插画，${mode == 0 ? '参考图风格' : '高质量原创构图'}',
         size: category == 1 ? '1024x1536' : '1536x1024',
-        referenceBase64: mode == 0 ? referenceBase64 : null,
+        referenceImages: mode == 0 && references.isNotEmpty
+            ? [for (final r in references) r.base64]
+            : null,
       );
       final localImage = await AiImageStorage.save(result, prefix: 'gallery');
       await AiGalleryStore.add(
@@ -4307,7 +4474,10 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Bad state: ', ''))),
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Bad state: ', '')),
+            duration: const Duration(milliseconds: 1200),
+          ),
         );
       }
     } finally {
@@ -4377,14 +4547,29 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
               if (mode == 0) ...[
                 const SizedBox(height: 18),
                 const Text(
-                  '参考图片',
+                  '参考图片（可多张，按导入顺序编号）',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
+                if (references.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (var i = 0; i < references.length; i++)
+                        _ReferenceThumb(
+                          index: i,
+                          image: references[i],
+                          onRemove: () => _removeReference(i),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 InkWell(
                   onTap: _pickReference,
                   child: Container(
-                    height: 110,
+                    height: 90,
                     width: double.infinity,
                     decoration: BoxDecoration(
                       border: Border.all(color: const Color(0xFFE5D8C2)),
@@ -4398,11 +4583,11 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
                           const Icon(
                             Icons.add_photo_alternate_outlined,
                             color: gold,
-                            size: 30,
+                            size: 26,
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4),
                           Text(
-                            reference ?? '点击上传参考图片',
+                            references.isEmpty ? '点击上传参考图片' : '继续添加参考图片',
                             style: const TextStyle(
                               color: Colors.black54,
                               fontSize: 12,
@@ -4412,6 +4597,11 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
                       ),
                     ),
                   ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '提示：可一次导入多张参考图，模型会按导入顺序编号区分图片，例如“第一张图片的人物按照第二张图片的姿势”。',
+                  style: TextStyle(color: Colors.black45, fontSize: 11),
                 ),
               ],
               const SizedBox(height: 18),
@@ -4451,6 +4641,85 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
       ],
     ),
   );
+}
+
+class _ReferenceThumb extends StatelessWidget {
+  final int index;
+  final _ReferenceImage image;
+  final VoidCallback onRemove;
+  const _ReferenceThumb({
+    required this.index,
+    required this.image,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = base64Decode(image.base64.split(',').last);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 92,
+          height: 92,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE5D8C2)),
+            color: const Color(0xFFFCF7ED),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Image.memory(
+              bytes,
+              width: 92,
+              height: 92,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.black38,
+                size: 30,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 4,
+          left: 4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: gold,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${index + 1}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
+                color: Colors.black87,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _GenerateChoice extends StatelessWidget {
@@ -5226,7 +5495,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     setState(() => requestLogs = const []);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('API 请求日志已删除')));
+    ).showSnackBar(
+      const SnackBar(
+        content: Text('API 请求日志已删除'),
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
   }
 
   String _formatLogTime(DateTime time) {
@@ -5314,7 +5588,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     if (mounted)
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('AI 服务配置已保存')));
+      ).showSnackBar(
+        const SnackBar(
+          content: Text('AI 服务配置已保存'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   Future<void> _restorePrevious() async {
@@ -5325,7 +5604,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('还没有可恢复的历史配置')));
+          ).showSnackBar(
+            const SnackBar(
+              content: Text('还没有可恢复的历史配置'),
+              duration: Duration(milliseconds: 1200),
+            ),
+          );
         }
         return;
       }
@@ -5341,7 +5625,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('已恢复本次打开页面前的配置')));
+        ).showSnackBar(
+          const SnackBar(
+            content: Text('已恢复本次打开页面前的配置'),
+            duration: Duration(milliseconds: 1200),
+          ),
+        );
       }
       return;
     }
@@ -5361,7 +5650,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('已恢复之前保存的 AI 配置')));
+      ).showSnackBar(
+        const SnackBar(
+          content: Text('已恢复之前保存的 AI 配置'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
     }
   }
 
@@ -5387,7 +5681,10 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     var url = baseUrl.text.trim();
     if (key.isEmpty || selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写 API Base URL、API Key 和模型名称')),
+        const SnackBar(
+          content: Text('请先填写 API Base URL、API Key 和模型名称'),
+          duration: Duration(milliseconds: 1200),
+        ),
       );
       return;
     }
@@ -5400,7 +5697,12 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       if (url.isEmpty) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('当前模型需要填写 API Base URL')));
+        ).showSnackBar(
+          const SnackBar(
+            content: Text('当前模型需要填写 API Base URL'),
+            duration: Duration(milliseconds: 1200),
+          ),
+        );
         return;
       }
       if (!url.endsWith('/images/generations')) {
@@ -5495,6 +5797,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
             (responseBody['data'] as List).isNotEmpty;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
+            duration: const Duration(milliseconds: 1200),
             content: Text(
               hasImage ? 'API 连接成功，已返回测试图片' : 'API 请求成功，但响应中没有图片数据',
             ),
@@ -5507,26 +5810,42 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
             ? (error['message'] ?? error['code'] ?? '接口返回错误').toString()
             : (responseBody['message'] ?? response.body).toString();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('API 连接失败（${response.statusCode}）：$message')),
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text('API 连接失败（${response.statusCode}）：$message'),
+          ),
         );
       }
     } on FormatException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('API 返回格式无法解析，请检查 Base URL 是否正确')),
+          const SnackBar(
+            content: Text('API 返回格式无法解析，请检查 Base URL 是否正确'),
+            duration: Duration(milliseconds: 1200),
+          ),
         );
       }
     } on TimeoutException {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('API 请求超时，请检查网络或服务地址')));
+        ).showSnackBar(
+          const SnackBar(
+            content: Text('API 请求超时，请检查网络或服务地址'),
+            duration: Duration(milliseconds: 1200),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('API 连接失败：$error')));
+        ).showSnackBar(
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text('API 连接失败：$error'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => testing = false);
@@ -5750,7 +6069,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
       setState(() => clearingCache = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('AI 图片缓存已清理')));
+      ).showSnackBar(
+        const SnackBar(
+          content: Text('AI 图片缓存已清理'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
     }
   }
 
@@ -5764,7 +6088,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
     if (mounted)
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('阅读记录已清空')));
+      ).showSnackBar(
+        const SnackBar(
+          content: Text('阅读记录已清空'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   Future<void> _openAiImageFolder() async {
@@ -5775,13 +6104,23 @@ class _DataManagementPageState extends State<DataManagementPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('已打开 AI 图片文件夹：${folder.path}')));
+        ).showSnackBar(
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text('已打开 AI 图片文件夹：${folder.path}'),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('打开文件夹失败：$error')));
+        ).showSnackBar(
+          SnackBar(
+            duration: const Duration(milliseconds: 1200),
+            content: Text('打开文件夹失败：$error'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => openingFolder = false);

@@ -1,6 +1,8 @@
 package com.arcglow.arc_reader
 
+import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
 import io.flutter.embedding.android.FlutterActivity
@@ -24,59 +26,8 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 try {
-                    val folder = File(path)
-                    val uri = FileProvider.getUriForFile(
-                        this,
-                        "${applicationContext.packageName}.fileprovider",
-                        folder,
-                    )
-                    val packageCandidates = listOf(
-                        "bin.mt.plus", // MT 管理器
-                        "bin.mt.file", // MT 文件管理器旧包名
-                    )
-                    val mimeCandidates = listOf(
-                        "resource/folder",
-                        "vnd.android.document/directory",
-                        "*/*",
-                    )
-                    var opened = false
-
-                    // 如果设备安装了 MT，优先交给 MT 打开。
-                    for (packageName in packageCandidates) {
-                        for (mime in mimeCandidates) {
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setPackage(packageName)
-                                setDataAndType(uri, mime)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            if (intent.resolveActivity(packageManager) != null) {
-                                startActivity(intent)
-                                opened = true
-                                break
-                            }
-                        }
-                        if (opened) break
-                    }
-
-                    // 没有 MT 时，交给系统已安装的文件管理器。
-                    if (!opened) {
-                        for (mime in mimeCandidates) {
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, mime)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            if (intent.resolveActivity(packageManager) != null) {
-                                startActivity(Intent.createChooser(intent, "打开 AI 图片文件夹"))
-                                opened = true
-                                break
-                            }
-                        }
-                    }
-
-                    if (!opened) {
-                        // 最后退回 Android 系统目录选择器。
+                    if (!openFolder(path)) {
+                        // 没有可用的文件管理器时，退回 Android 系统目录选择器。
                         startActivity(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -87,5 +38,59 @@ class MainActivity : FlutterActivity() {
                     result.error("OPEN_FOLDER_FAILED", error.message, null)
                 }
             }
+    }
+
+    private fun openFolder(path: String): Boolean {
+        // 1) 优先交给 MT 管理器：通过 mt://open 协议直接定位到目标目录，
+        //    并显式指定主 Activity，避免弹出多个 MT 选项。
+        val mtCandidates = listOf(
+            "bin.mt.plus" to "bin.mt.plus.MT",
+            "bin.mt.file" to "bin.mt.file.MT",
+        )
+        for ((pkg, activity) in mtCandidates) {
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                packageManager.getActivityInfo(ComponentName(pkg, activity), 0)
+                val uri = Uri.Builder()
+                    .scheme("mt")
+                    .authority("open")
+                    .appendQueryParameter("path", path)
+                    .build()
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage(pkg)
+                    component = ComponentName(pkg, activity)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                // 未安装或组件不存在，尝试下一个。
+            }
+        }
+
+        // 2) 没有 MT 时，交给系统已安装的文件管理器。
+        val folder = File(path)
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            folder,
+        )
+        val mimeCandidates = listOf(
+            "resource/folder",
+            "vnd.android.document/directory",
+            "*/*",
+        )
+        for (mime in mimeCandidates) {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(Intent.createChooser(intent, "打开 AI 图片文件夹"))
+                return true
+            }
+        }
+        return false
     }
 }

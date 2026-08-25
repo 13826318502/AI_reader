@@ -1,7 +1,11 @@
 allprojects {
     repositories {
-        google()
-        mavenCentral()
+        // 国内镜像（原 google()/mavenCentral() 被墙，注释保留）
+        maven(url = "https://maven.aliyun.com/repository/google")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://maven.aliyun.com/repository/central")
+        // google()
+        // mavenCentral()
     }
 }
 
