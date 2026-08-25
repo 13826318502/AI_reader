@@ -216,16 +216,11 @@ class AiImageService {
       'response_format': 'url',
     };
     if (referenceImages != null && referenceImages.isNotEmpty) {
-      if (referenceImages.length == 1) {
-        // 单张参考图沿用原有字段格式。
-        body['image'] = referenceImages.first;
-      } else {
-        // 多张参考图按导入顺序发送，text 字段用于让模型区分每张图片的次序。
-        body['image'] = [
-          for (var i = 0; i < referenceImages.length; i++)
-            {'image': referenceImages[i], 'text': '参考图${i + 1}'},
-        ];
-      }
+      // 单张参考图沿用字符串格式；多张时火山方舟 Seedream 仅接受字符串数组，
+      // 不接受 {"image","text"} 对象数组（会返回 400 image not valid）。
+      body['image'] = referenceImages.length == 1
+          ? referenceImages.first
+          : referenceImages;
     }
     if (isArk) {
       body.addAll({
@@ -266,6 +261,22 @@ class AiImageService {
     stopwatch.stop();
     final requestSucceeded =
         response.statusCode >= 200 && response.statusCode < 300;
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = null;
+    }
+    String? errorDetail;
+    if (!requestSucceeded) {
+      final error = decoded is Map ? decoded['error'] : null;
+      errorDetail = error is Map
+          ? (error['message'] ?? error['code'] ?? '接口返回错误').toString()
+          : (decoded is Map
+                    ? (decoded['message'] ?? response.body)
+                    : response.body)
+                .toString();
+    }
     await ApiRequestLogStore.append(
       ApiRequestLog(
         timestamp: DateTime.now(),
@@ -275,24 +286,15 @@ class AiImageService {
         statusCode: response.statusCode,
         durationMs: stopwatch.elapsedMilliseconds,
         success: requestSucceeded,
-        error: requestSucceeded ? null : 'HTTP ${response.statusCode}',
+        error: requestSucceeded
+            ? null
+            : 'HTTP ${response.statusCode}：$errorDetail',
       ),
     );
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(response.body);
-    } catch (_) {
-      decoded = null;
-    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded is Map ? decoded['error'] : null;
-      final message = error is Map
-          ? (error['message'] ?? error['code'] ?? '接口返回错误').toString()
-          : (decoded is Map
-                    ? (decoded['message'] ?? response.body)
-                    : response.body)
-                .toString();
-      throw StateError('API 请求失败（${response.statusCode}）：$message');
+      throw StateError(
+        'API 请求失败（${response.statusCode}）：$errorDetail',
+      );
     }
     final list = decoded is Map && decoded['data'] is List
         ? decoded['data'] as List
