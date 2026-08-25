@@ -1413,6 +1413,27 @@ class _ReaderBookmark {
   const _ReaderBookmark(this.chapter, this.page, this.preview);
 }
 
+class _ReaderFlatPage {
+  final int chapterIndex;
+  final int pageInChapter;
+  final int textGlobal;
+  final String? imagePath;
+  final String? imageId;
+  const _ReaderFlatPage.text(
+    this.chapterIndex,
+    this.pageInChapter,
+    this.textGlobal,
+  ) : imagePath = null,
+      imageId = null;
+  const _ReaderFlatPage.image(
+    this.chapterIndex,
+    this.textGlobal,
+    this.imagePath,
+    this.imageId,
+  ) : pageInChapter = -1;
+  bool get isImage => imagePath != null;
+}
+
 class _ReaderPageState extends State<ReaderPage> {
   _ImportedWork? importedWork;
   bool focused = false;
@@ -1425,6 +1446,7 @@ class _ReaderPageState extends State<ReaderPage> {
   int currentPage = 0;
   final List<_ReaderBookmark> bookmarks = [];
   final Set<int> bookmarkedPages = {};
+  List<_AiImagePageEntry> _imagePages = [];
   bool _ready = false;
   int _savedChapterPage = 0;
   static const int _charsPerPage = 560;
@@ -1441,7 +1463,9 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() {
       importedWork = work?.title == widget.bookTitle ? work : null;
       _ready = true;
+      _flatCache = null;
     });
+    await _loadImagePages();
     await _loadBookmarks();
     if (!mounted) return;
     setState(() {
@@ -1452,6 +1476,15 @@ class _ReaderPageState extends State<ReaderPage> {
       if (mounted && readingPages.hasClients) {
         readingPages.jumpToPage(currentPage);
       }
+    });
+  }
+
+  Future<void> _loadImagePages() async {
+    final loaded = await AiImagePageStore.load(widget.bookTitle);
+    if (!mounted) return;
+    setState(() {
+      _imagePages = loaded;
+      _flatCache = null;
     });
   }
 
@@ -1466,51 +1499,69 @@ class _ReaderPageState extends State<ReaderPage> {
     ];
   }
 
-  List<int> get _chapterStartPages {
-    final counts = _chapterPageCounts;
-    final starts = <int>[0];
-    for (var i = 0; i < counts.length - 1; i++) {
-      starts.add(starts[i] + counts[i]);
-    }
-    return starts;
-  }
-
-  int get _totalPages => _chapterPageCounts.fold(0, (sum, n) => sum + n);
-
   int get _chapterCount => importedWork?.chapters.length ?? 12;
 
   int _clampInt(int value, int min, int max) =>
       value < min ? min : (value > max ? max : value);
 
-  (int, int) _locationOf(int globalPage) {
-    final starts = _chapterStartPages;
-    var chapter = 0;
-    for (var i = 1; i < starts.length; i++) {
-      if (globalPage >= starts[i]) {
-        chapter = i;
-      } else {
-        break;
+  List<_ReaderFlatPage>? _flatCache;
+
+  List<_ReaderFlatPage> _computeFlatPages() {
+    final counts = _chapterPageCounts;
+    final imageMap = <int, List<_AiImagePageEntry>>{};
+    for (final e in _imagePages) {
+      imageMap.putIfAbsent(e.afterTextPage, () => []).add(e);
+    }
+    final flat = <_ReaderFlatPage>[];
+    var textGlobal = 0;
+    for (var c = 0; c < counts.length; c++) {
+      for (var p = 0; p < counts[c]; p++) {
+        flat.add(_ReaderFlatPage.text(c, p, textGlobal));
+        for (final e in imageMap[textGlobal] ?? const <_AiImagePageEntry>[]) {
+          flat.add(_ReaderFlatPage.image(c, textGlobal, e.image, e.id));
+        }
+        textGlobal++;
       }
     }
-    return (chapter, globalPage - starts[chapter]);
+    return flat;
   }
 
-  int _globalPageOf(int chapterIndex, int pageInChapter) =>
-      _chapterStartPages[chapterIndex] + pageInChapter;
+  List<_ReaderFlatPage> get _flatPages => _flatCache ??= _computeFlatPages();
 
-  int get _currentChapterIndex => _locationOf(currentPage).$1;
+  int get _totalPages => _flatPages.length;
+
+  _ReaderFlatPage _locationOf(int globalPage) => _flatPages[globalPage];
+
+  int _flatIndexOfTextPage(int chapterIndex, int pageInChapter) {
+    final flat = _flatPages;
+    for (var i = 0; i < flat.length; i++) {
+      if (!flat[i].isImage &&
+          flat[i].chapterIndex == chapterIndex &&
+          flat[i].pageInChapter == pageInChapter) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  int _flatIndexOfTextGlobal(int textGlobal) {
+    final flat = _flatPages;
+    for (var i = 0; i < flat.length; i++) {
+      if (!flat[i].isImage && flat[i].textGlobal == textGlobal) return i;
+    }
+    return 0;
+  }
+
+  int get _currentChapterIndex => _locationOf(currentPage).chapterIndex;
   int get _currentChapterNumber => _currentChapterIndex + 1;
-  int get _currentPageInChapter => _locationOf(currentPage).$2;
+  int get _currentPageInChapter => _locationOf(currentPage).pageInChapter;
 
   int _initialGlobalPage() {
     final counts = _chapterPageCounts;
     final chapterIndex = _clampInt(widget.chapter - 1, 0, _chapterCount - 1);
     final saved = _clampInt(_savedChapterPage, 0, counts[chapterIndex] - 1);
-    return _clampInt(
-      _chapterStartPages[chapterIndex] + saved,
-      0,
-      _totalPages - 1,
-    );
+    final flatIndex = _flatIndexOfTextPage(chapterIndex, saved);
+    return _clampInt(flatIndex, 0, _totalPages - 1);
   }
 
   String _chapterHeaderText(int chapterNumber, String title) {
@@ -1575,7 +1626,48 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildPage(int globalPage) {
-    final (chapterIndex, pageInChapter) = _locationOf(globalPage);
+    final flat = _locationOf(globalPage);
+    if (flat.isImage) {
+      return _ReadingPageContent(
+        children: [
+          Row(
+            children: [
+              const Text(
+                'AI 生成图片',
+                style: TextStyle(
+                  color: gold,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _confirmRemoveImagePage(flat),
+                child: const Icon(
+                  Icons.delete_outline,
+                  size: 20,
+                  color: Colors.black45,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 420),
+              child: AiImagePreview(image: flat.imagePath!, fit: BoxFit.contain),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            '此图片已插入当前小说，点击右上角删除图标可移除',
+            style: TextStyle(color: Colors.black38, fontSize: 11),
+          ),
+        ],
+      );
+    }
+    final chapterIndex = flat.chapterIndex;
+    final pageInChapter = flat.pageInChapter;
     final chapters = importedWork?.chapters;
     if (chapters == null) return _buildDemoPage(chapterIndex, pageInChapter);
     if (chapterIndex < 0 || chapterIndex >= chapters.length) {
@@ -1604,6 +1696,131 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  Future<void> _insertImagePage(String imagePath, {String label = 'AI 生成图片'}) async {
+    if (_totalPages == 0) return;
+    final anchor = _flatPages[currentPage].textGlobal;
+    final entry = _AiImagePageEntry(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      image: imagePath,
+      label: label,
+      afterTextPage: anchor,
+    );
+    _imagePages.add(entry);
+    await AiImagePageStore.save(widget.bookTitle, _imagePages);
+    if (!mounted) return;
+    setState(() => _flatCache = null);
+    final newIndex = _flatIndexOfImagePage(entry.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && readingPages.hasClients) {
+        readingPages.jumpToPage(newIndex);
+        setState(() => currentPage = newIndex);
+      }
+    });
+  }
+
+  int _flatIndexOfImagePage(String id) {
+    final flat = _flatPages;
+    for (var i = 0; i < flat.length; i++) {
+      if (flat[i].imageId == id) return i;
+    }
+    return 0;
+  }
+
+  Future<void> _confirmRemoveImagePage(_ReaderFlatPage flat) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除这张图片页？'),
+        content: const Text('从当前小说中移除这张 AI 图片页。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    _imagePages.removeWhere((e) => e.id == flat.imageId);
+    await AiImagePageStore.save(widget.bookTitle, _imagePages);
+    if (!mounted) return;
+    setState(() => _flatCache = null);
+    final target = _flatIndexOfTextGlobal(flat.textGlobal).clamp(
+      0,
+      _totalPages - 1,
+    ).toInt();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && readingPages.hasClients) {
+        readingPages.jumpToPage(target);
+      }
+    });
+  }
+
+  void _showAiImageActions() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: background,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 16, 18, 4),
+              child: Text(
+                '插入 AI 图片页',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome, color: gold),
+              title: const Text('生成新图片并插入本书'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final path = await Navigator.push<String>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookAiGeneratePage(
+                      title: widget.bookTitle,
+                      insertMode: true,
+                    ),
+                  ),
+                );
+                if (path != null && mounted) {
+                  await _insertImagePage(path);
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: gold),
+              title: const Text('从 AI 图片库导入'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                final path = await Navigator.push<String>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookAiGalleryPage(
+                      title: widget.bookTitle,
+                      pickMode: true,
+                    ),
+                  ),
+                );
+                if (path != null && mounted) {
+                  await _insertImagePage(path);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     readingPages.dispose();
@@ -1625,7 +1842,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (c == null || pg == null || c < 1 || c > _chapterCount) continue;
       if (pg < 0 || pg >= _chapterPageCounts[c - 1]) continue;
       loaded.add(_ReaderBookmark(c, pg, '红烛摇曳，簌字高悬。'));
-      final global = _globalPageOf(c - 1, pg);
+      final global = _flatIndexOfTextPage(c - 1, pg);
       if (global >= 0 && global < _totalPages) pages.add(global);
     }
     for (var i = 1; i <= _chapterCount; i++) {
@@ -1637,7 +1854,7 @@ class _ReaderPageState extends State<ReaderPage> {
           pg < _chapterPageCounts[i - 1] &&
           !loaded.any((b) => b.chapter == i && b.page == pg)) {
         loaded.add(_ReaderBookmark(i, pg, '红烛摇曳，簌字高悬。'));
-        final global = _globalPageOf(i - 1, pg);
+        final global = _flatIndexOfTextPage(i - 1, pg);
         if (global >= 0 && global < _totalPages) pages.add(global);
       }
     }
@@ -1660,19 +1877,34 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _persistReadingPosition() {
-    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
+    final flat = _locationOf(currentPage);
+    if (flat.isImage) return;
     SharedPreferences.getInstance().then((p) {
       p.setInt(
-        'reading_page_${widget.bookTitle}_${chapterIndex + 1}',
-        pageInChapter,
+        'reading_page_${widget.bookTitle}_${flat.chapterIndex + 1}',
+        flat.pageInChapter,
       );
-      p.setInt('reading_chapter_${widget.bookTitle}', chapterIndex + 1);
+      p.setInt(
+        'reading_chapter_${widget.bookTitle}',
+        flat.chapterIndex + 1,
+      );
     });
   }
 
   Future<void> _markBookmark() async {
-    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
-    final chapter = chapterIndex + 1;
+    final flat = _locationOf(currentPage);
+    if (flat.isImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(milliseconds: 1200),
+          content: Text('图片页不支持添加书签'),
+        ),
+      );
+      return;
+    }
+    final chapter = flat.chapterIndex + 1;
+    final pageInChapter = flat.pageInChapter;
     if (!bookmarked) {
       setState(() {
         bookmarked = true;
@@ -1722,13 +1954,14 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _unmarkCurrentBookmark() async {
-    final (chapterIndex, pageInChapter) = _locationOf(currentPage);
+    final flat = _locationOf(currentPage);
+    if (flat.isImage) return;
     if (!mounted) return;
     setState(() {
       bookmarked = false;
       bookmarkedPages.remove(currentPage);
       bookmarks.removeWhere(
-        (b) => b.chapter == chapterIndex + 1 && b.page == pageInChapter,
+        (b) => b.chapter == flat.chapterIndex + 1 && b.page == flat.pageInChapter,
       );
     });
     await _persistBookmarks();
@@ -1752,7 +1985,7 @@ class _ReaderPageState extends State<ReaderPage> {
         (b) => b.chapter == bookmark.chapter && b.page == bookmark.page,
       );
       if (bookmark.chapter >= 1 && bookmark.chapter <= _chapterCount) {
-        final global = _globalPageOf(bookmark.chapter - 1, bookmark.page);
+        final global = _flatIndexOfTextPage(bookmark.chapter - 1, bookmark.page);
         bookmarkedPages.remove(global);
         if (bookmark.chapter == _currentChapterNumber &&
             bookmark.page == _currentPageInChapter) {
@@ -1911,7 +2144,7 @@ class _ReaderPageState extends State<ReaderPage> {
                                           onTap: () {
                                             Navigator.pop(context);
                                             readingPages.jumpToPage(
-                                              _globalPageOf(
+                                              _flatIndexOfTextPage(
                                                 b.chapter - 1,
                                                 b.page,
                                               ),
@@ -2177,15 +2410,8 @@ class _ReaderPageState extends State<ReaderPage> {
                             ),
                             _ReaderTool(
                               icon: Icons.image_outlined,
-                              label: 'AI生图',
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => BookAiGeneratePage(
-                                    title: widget.bookTitle,
-                                  ),
-                                ),
-                              ),
+                              label: 'AI图片',
+                              onTap: _showAiImageActions,
                             ),
                             _ReaderTool(
                               icon: Icons.cloud_outlined,
@@ -3779,6 +4005,67 @@ class ImportedWorkStore {
   }
 }
 
+class _AiImagePageEntry {
+  final String id;
+  final String image;
+  final String label;
+  final int afterTextPage;
+  const _AiImagePageEntry({
+    required this.id,
+    required this.image,
+    required this.label,
+    required this.afterTextPage,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'image': image,
+    'label': label,
+    'after_text_page': afterTextPage,
+  };
+
+  factory _AiImagePageEntry.fromJson(Map<String, dynamic> json) =>
+      _AiImagePageEntry(
+        id: json['id']?.toString() ?? '',
+        image: json['image']?.toString() ?? '',
+        label: json['label']?.toString() ?? 'AI 生成图片',
+        afterTextPage: (json['after_text_page'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class AiImagePageStore {
+  static String key(String bookTitle) => 'ai_image_pages_$bookTitle';
+
+  static Future<List<_AiImagePageEntry>> load(String bookTitle) async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getStringList(key(bookTitle)) ?? const <String>[];
+    return raw
+        .map((value) {
+          try {
+            final json = jsonDecode(value);
+            return json is Map
+                ? _AiImagePageEntry.fromJson(Map<String, dynamic>.from(json))
+                : null;
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<_AiImagePageEntry>()
+        .toList();
+  }
+
+  static Future<void> save(
+    String bookTitle,
+    List<_AiImagePageEntry> entries,
+  ) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(
+      key(bookTitle),
+      entries.map((e) => jsonEncode(e.toJson())).toList(),
+    );
+  }
+}
+
 class Works extends StatefulWidget {
   const Works({super.key});
   @override
@@ -4167,7 +4454,8 @@ class AiGalleryStore {
 
 class BookAiGalleryPage extends StatefulWidget {
   final String title;
-  const BookAiGalleryPage({required this.title, super.key});
+  final bool pickMode;
+  const BookAiGalleryPage({required this.title, this.pickMode = false, super.key});
   @override
   State<BookAiGalleryPage> createState() => _BookAiGalleryPageState();
 }
@@ -4275,50 +4563,58 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
               childAspectRatio: .92,
             ),
             itemCount: visibleImages.length,
-            itemBuilder: (_, i) => _GalleryImage(
-              image: visibleImages[i].image,
-              label: visibleImages[i].label,
-            ),
+            itemBuilder: (_, i) {
+              final item = visibleImages[i];
+              if (widget.pickMode) {
+                return InkWell(
+                  onTap: () => Navigator.pop(context, item.image),
+                  child: _GalleryImage(image: item.image, label: item.label),
+                );
+              }
+              return _GalleryImage(image: item.image, label: item.label);
+            },
           ),
         ),
-        SafeArea(
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF142A3D),
-              border: Border(top: BorderSide(color: Colors.white12)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BookAiGeneratePage(title: widget.title),
+        if (!widget.pickMode)
+          SafeArea(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF142A3D),
+                border: Border(top: BorderSide(color: Colors.white12)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              BookAiGeneratePage(title: widget.title),
+                        ),
+                      ),
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('AI 生成图片'),
+                      style: FilledButton.styleFrom(backgroundColor: gold),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _importImage,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('导入图片'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white38),
                       ),
                     ),
-                    icon: const Icon(Icons.auto_awesome),
-                    label: const Text('AI 生成图片'),
-                    style: FilledButton.styleFrom(backgroundColor: gold),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _importImage,
-                    icon: const Icon(Icons.add_photo_alternate_outlined),
-                    label: const Text('导入图片'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white38),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
       ],
     ),
   );
@@ -4396,7 +4692,12 @@ class _ReferenceImage {
 
 class BookAiGeneratePage extends StatefulWidget {
   final String title;
-  const BookAiGeneratePage({required this.title, super.key});
+  final bool insertMode;
+  const BookAiGeneratePage({
+    required this.title,
+    this.insertMode = false,
+    super.key,
+  });
   @override
   State<BookAiGeneratePage> createState() => _BookAiGeneratePageState();
 }
@@ -4467,6 +4768,10 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
         image: localImage ?? result,
       );
       if (!mounted) return;
+      if (widget.insertMode) {
+        Navigator.pop(context, localImage ?? result);
+        return;
+      }
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
