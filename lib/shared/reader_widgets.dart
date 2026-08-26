@@ -157,22 +157,26 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   }
 
   void _onDragEnd(DragEndDetails details) {
-    if (_dragProgress.abs() > .18 && _dragProgress.sign != 0) {
-      _animateTo(_dragProgress.sign, commit: true);
+    final velocityProgress = details.primaryVelocity == null
+        ? 0.0
+        : (-details.primaryVelocity! / (_dragWidth * 5.2));
+    final intended = (_dragProgress + velocityProgress).clamp(-1.0, 1.0);
+    if (intended.abs() > .18 && intended.sign != 0) {
+      _animateTo(intended.sign, commit: true);
     } else {
       _animateTo(0);
     }
   }
-
-  Widget _buildPageAt(int index) =>
-      Positioned.fill(child: widget.pageBuilder(index));
 
   Widget _curlPage(double progress) {
     final direction = progress.sign;
     final amount = progress.abs().clamp(0.0, 1.0);
     final target = (_page + direction.toInt()).clamp(0, widget.pageCount - 1);
     final forward = direction > 0;
-    final rotation = forward ? -amount * 1.570796 : amount * 1.570796;
+    // Forward navigation is a left swipe: the current page lifts from the
+    // right book edge and turns toward the left. Backward navigation mirrors
+    // that motion from the left edge.
+    final rotation = forward ? amount * 1.570796 : -amount * 1.570796;
     final transform = Matrix4.identity()
       ..setEntry(3, 2, 0.0016)
       ..rotateY(rotation);
@@ -189,12 +193,17 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _buildPageAt(target),
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: const Color(0xFFF7EFE2),
+                    child: widget.pageBuilder(target),
+                  ),
+                ),
                 if (amount < .999)
                   Transform(
                     alignment: forward
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight,
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     transform: transform,
                     transformHitTests: false,
                     child: DecoratedBox(
@@ -211,24 +220,43 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5EBDD),
+                              gradient: LinearGradient(
+                                begin: forward
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                end: forward
+                                    ? Alignment.centerLeft
+                                    : Alignment.centerRight,
+                                colors: const [
+                                  Color(0xFFE8D8C4),
+                                  Color(0xFFF8F0E4),
+                                  Color(0xFFF5EBDD),
+                                ],
+                              ),
+                            ),
+                          ),
                           widget.pageBuilder(_page),
                           Align(
                             alignment: forward
-                                ? Alignment.centerLeft
-                                : Alignment.centerRight,
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
                             child: FractionallySizedBox(
-                              widthFactor: .24 * amount,
+                              widthFactor: .30 * amount,
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     begin: forward
-                                        ? Alignment.centerLeft
-                                        : Alignment.centerRight,
-                                    end: forward
                                         ? Alignment.centerRight
                                         : Alignment.centerLeft,
+                                    end: forward
+                                        ? Alignment.centerLeft
+                                        : Alignment.centerRight,
                                     colors: [
-                                      Colors.black.withOpacity(.32 * amount),
+                                      Colors.black.withOpacity(.40 * amount),
+                                      Colors.white.withOpacity(.10 * amount),
                                       Colors.transparent,
                                     ],
                                   ),
@@ -245,17 +273,24 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
                 if (amount > .02)
                   Align(
                     alignment: forward
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight,
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     child: FractionallySizedBox(
-                      widthFactor: .018,
+                      widthFactor: .024,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(.48 * amount),
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.black.withOpacity(.34 * amount),
+                              Colors.white.withOpacity(.72 * amount),
+                              Colors.transparent,
+                            ],
+                          ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(.3 * amount),
-                              blurRadius: 9,
+                              color: Colors.black.withOpacity(.36 * amount),
+                              blurRadius: 14 * amount,
+                              spreadRadius: 1,
                             ),
                           ],
                         ),

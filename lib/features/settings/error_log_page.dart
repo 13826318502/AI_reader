@@ -102,6 +102,7 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
         : logs
               .where((log) => log.sessionId == AppErrorLogStore.sessionId)
               .toList();
+    final hasVisibleLogs = visibleLogs.isNotEmpty;
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -131,8 +132,8 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
           ),
         ],
       ),
-      body: logs.isEmpty
-          ? const Center(child: Text('暂无错误记录'))
+      body: logs.isEmpty || !hasVisibleLogs
+          ? Center(child: Text(logs.isEmpty ? '暂无错误记录' : '本次启动暂无错误记录'))
           : ListView.builder(
               padding: const EdgeInsets.all(18),
               itemCount: visibleLogs.length + 1,

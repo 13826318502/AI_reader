@@ -55,6 +55,7 @@ class AppErrorLogStore {
   static Future<List<AppErrorLog>> load() async {
     final p = await SharedPreferences.getInstance();
     return (p.getStringList(key) ?? const [])
+        .where((value) => value.trim().isNotEmpty)
         .map((value) {
           try {
             final json = jsonDecode(value);
@@ -76,7 +77,7 @@ class AppErrorLogStore {
     String context = '',
     String? diagnostics,
   }) async {
-    if (_writing) return;
+    if (_writing || error.toString().trim().isEmpty) return;
     _writing = true;
     try {
       final entries = await load();
@@ -101,6 +102,8 @@ class AppErrorLogStore {
             .map((entry) => jsonEncode(entry.toJson()))
             .toList(),
       );
+    } catch (_) {
+      // Logging must never become a second source of runtime errors.
     } finally {
       _writing = false;
     }

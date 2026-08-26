@@ -59,14 +59,40 @@ class _ReaderPageState extends State<ReaderPage> {
   List<_AiImagePageEntry> _imagePages = [];
   bool _ready = false;
   int _savedChapterPage = 0;
-  // Keep each logical page comfortably below the viewport. The page itself
-  // remains scrollable so larger accessibility font sizes never overflow.
-  static const int _charsPerPage = 240;
+  // Recalculated from the actual viewport and text scale in
+  // didChangeDependencies. Keeping a safety margin prevents a page from
+  // overflowing when Android's font scale or the reader controls change.
+  int _charsPerPage = 180;
 
   @override
   void initState() {
     super.initState();
     _init();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final size = MediaQuery.sizeOf(context);
+    final textScale = MediaQuery.textScalerOf(context).scale(readerFontSize);
+    final availableWidth =
+        (size.width - ReadingPreferencesStore.horizontalPadding * 2).clamp(
+          160.0,
+          double.infinity,
+        );
+    final availableHeight = (size.height - 210).clamp(360.0, double.infinity);
+    final charsPerLine = (availableWidth / (textScale * .98)).floor();
+    final linesPerPage =
+        (availableHeight / (textScale * ReadingPreferencesStore.lineHeight))
+            .floor();
+    final nextCapacity = (charsPerLine * linesPerPage * .68)
+        .round()
+        .clamp(96, 220)
+        .toInt();
+    if (nextCapacity != _charsPerPage) {
+      _charsPerPage = nextCapacity;
+      _flatCache = null;
+    }
   }
 
   Future<void> _init() async {
