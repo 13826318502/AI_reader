@@ -5,9 +5,13 @@ class ImportedWorkStore {
   static List<String>? _source;
   static Future<List<_ImportedWork>>? _decoded;
   static List<_ImportedWork>? _cachedWorks;
+  static Future<SharedPreferences>? _preferences;
+
+  static Future<SharedPreferences> _prefs() =>
+      _preferences ??= SharedPreferences.getInstance();
 
   static Future<List<_ImportedWork>> loadAll() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final rawList = preferences.getStringList(collectionKey);
     if (rawList != null) {
       if (!listEquals(_source, rawList)) {
@@ -62,7 +66,7 @@ class ImportedWorkStore {
   }
 
   static Future<void> save(_ImportedWork work) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final works = await loadAll();
     works.removeWhere((item) => item.id == work.id || item.title == work.title);
     works.insert(0, work);
@@ -76,7 +80,7 @@ class ImportedWorkStore {
     final newValue = newTitle.trim();
     if (oldValue.isEmpty || newValue.isEmpty || oldValue == newValue)
       return false;
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final works = await loadAll();
     final work = works.cast<_ImportedWork?>().firstWhere(
       (item) => item?.title == oldValue,
@@ -132,7 +136,7 @@ class ImportedWorkStore {
   }
 
   static Future<void> delete(String title) async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     final works = await loadAll();
     works.removeWhere((item) => item.title == title);
     final records = await compute(_encodeImportedWorks, works);
@@ -151,7 +155,7 @@ class ImportedWorkStore {
   }
 
   static Future<void> clear() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await _prefs();
     await preferences.remove(collectionKey);
     await preferences.remove('latest_imported_work');
   }
