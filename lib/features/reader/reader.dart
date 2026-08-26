@@ -51,7 +51,8 @@ class _ReaderPageState extends State<ReaderPage> {
   bool readerEyeCare = false;
   String readerTheme = 'paper';
   String readerPageMode = 'curl';
-  final PageController readingPages = PageController();
+  final GlobalKey<_BookReaderViewportState> readerViewportKey =
+      GlobalKey<_BookReaderViewportState>();
   int currentPage = 0;
   final List<_ReaderBookmark> bookmarks = [];
   final Set<int> bookmarkedPages = {};
@@ -91,9 +92,7 @@ class _ReaderPageState extends State<ReaderPage> {
       bookmarked = bookmarkedPages.contains(currentPage);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && readingPages.hasClients) {
-        readingPages.jumpToPage(currentPage);
-      }
+      if (mounted) readerViewportKey.currentState?.jumpToPage(currentPage);
     });
   }
 
@@ -307,10 +306,7 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() => _flatCache = null);
     final newIndex = _flatIndexOfImagePage(entry.id);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && readingPages.hasClients) {
-        readingPages.jumpToPage(newIndex);
-        setState(() => currentPage = newIndex);
-      }
+      if (mounted) readerViewportKey.currentState?.jumpToPage(newIndex);
     });
   }
 
@@ -350,9 +346,7 @@ class _ReaderPageState extends State<ReaderPage> {
       flat.textGlobal,
     ).clamp(0, _totalPages - 1).toInt();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && readingPages.hasClients) {
-        readingPages.jumpToPage(target);
-      }
+      if (mounted) readerViewportKey.currentState?.jumpToPage(target);
     });
   }
 
@@ -418,7 +412,6 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
-    readingPages.dispose();
     super.dispose();
   }
 
@@ -690,6 +683,24 @@ class _ReaderPageState extends State<ReaderPage> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _openReadingPreferences() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReadingPreferencesPage()),
+    );
+    if (!mounted) return;
+    await ReadingPreferencesStore.load();
+    setState(() {
+      readerFontSize = ReadingPreferencesStore.fontSize;
+      readerImmersive = ReadingPreferencesStore.immersive;
+      readerPageTurn = ReadingPreferencesStore.pageTurn;
+      readerEyeCare = ReadingPreferencesStore.eyeCare;
+      readerTheme = ReadingPreferencesStore.theme;
+      readerPageMode = ReadingPreferencesStore.pageMode;
+      _flatCache = null;
+    });
+  }
+
   void _showGlobalSearch() => Navigator.push(
     context,
     MaterialPageRoute(builder: (_) => const GlobalSearchPage()),
@@ -746,12 +757,13 @@ class _ReaderPageState extends State<ReaderPage> {
                                           trailing: Text('第${b.page + 1}页'),
                                           onTap: () {
                                             Navigator.pop(context);
-                                            readingPages.jumpToPage(
-                                              _flatIndexOfTextPage(
-                                                b.chapter - 1,
-                                                b.page,
-                                              ),
-                                            );
+                                            readerViewportKey.currentState
+                                                ?.jumpToPage(
+                                                  _flatIndexOfTextPage(
+                                                    b.chapter - 1,
+                                                    b.page,
+                                                  ),
+                                                );
                                           },
                                         ),
                                       ),
@@ -934,9 +946,11 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                       child: DefaultTextStyle(
                         style: TextStyle(color: readerInk),
-                        child: PageView.builder(
-                          controller: readingPages,
-                          pageSnapping: readerPageTurn,
+                        child: _BookReaderViewport(
+                          key: readerViewportKey,
+                          pageCount: _ready ? _totalPages : 1,
+                          initialPage: currentPage,
+                          mode: readerPageTurn ? readerPageMode : 'none',
                           onPageChanged: (page) {
                             setState(() {
                               currentPage = page;
@@ -944,15 +958,8 @@ class _ReaderPageState extends State<ReaderPage> {
                             });
                             _persistReadingPosition();
                           },
-                          itemCount: _ready ? _totalPages : 1,
-                          itemBuilder: (_, page) => _ready
-                              ? readerPageMode == 'curl'
-                                    ? _BookTurnPage(
-                                        controller: readingPages,
-                                        index: page,
-                                        child: _buildPage(page),
-                                      )
-                                    : _buildPage(page)
+                          pageBuilder: (page) => _ready
+                              ? _buildPage(page)
                               : const _ReadingPageContent(
                                   children: [
                                     SizedBox(height: 24),
@@ -1060,13 +1067,7 @@ class _ReaderPageState extends State<ReaderPage> {
                                   _ReaderTool(
                                     icon: Icons.settings_outlined,
                                     label: '设置',
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const ReadingPreferencesPage(),
-                                      ),
-                                    ),
+                                    onTap: _openReadingPreferences,
                                   ),
                                 ],
                               ),
