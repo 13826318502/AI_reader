@@ -10,6 +10,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final ValueNotifier<bool> appDarkMode = ValueNotifier<bool>(false);
+
+class ThemePreferenceStore {
+  static Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    appDarkMode.value = p.getBool('app_dark_mode') ?? false;
+  }
+
+  static Future<void> save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('app_dark_mode', appDarkMode.value);
+  }
+}
+
 Color get background =>
     appDarkMode.value ? const Color(0xFF101820) : const Color(0xFFF7F1E6);
 Color get surface =>
@@ -17,6 +30,26 @@ Color get surface =>
 Color get mutedText => appDarkMode.value ? Colors.white70 : Colors.black54;
 Color get primaryText => appDarkMode.value ? Colors.white : Colors.black87;
 const gold = Color(0xFFD99222);
+
+class ReadingPreferencesStore {
+  static double fontSize = 18;
+  static bool immersive = true;
+  static bool pageTurn = true;
+
+  static Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    fontSize = p.getDouble('reading_font_size') ?? 18;
+    immersive = p.getBool('reading_immersive') ?? true;
+    pageTurn = p.getBool('reading_page_turn') ?? true;
+  }
+
+  static Future<void> save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setDouble('reading_font_size', fontSize);
+    await p.setBool('reading_immersive', immersive);
+    await p.setBool('reading_page_turn', pageTurn);
+  }
+}
 
 class AiImageStorage {
   static const _folderName = 'AI生成图片';
@@ -292,9 +325,7 @@ class AiImageService {
       ),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-        'API 请求失败（${response.statusCode}）：$errorDetail',
-      );
+      throw StateError('API 请求失败（${response.statusCode}）：$errorDetail');
     }
     final list = decoded is Map && decoded['data'] is List
         ? decoded['data'] as List
@@ -352,6 +383,7 @@ class AiImagePreview extends StatelessWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ThemePreferenceStore.load();
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
   ]);
@@ -367,60 +399,64 @@ class ArcReaderApp extends StatefulWidget {
 
 class _ArcReaderState extends State<ArcReaderApp> {
   int tab = 0;
+  late final List<Widget> pages;
+
+  @override
+  void initState() {
+    super.initState();
+    pages = const [Shelf(), Works(), Gallery(), Worlds(), Mine()];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      const Shelf(),
-      const Works(),
-      const Gallery(),
-      const Worlds(),
-      const Mine(),
-    ];
-    return ValueListenableBuilder<bool>(
-      valueListenable: appDarkMode,
-      builder: (_, dark, __) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          fontFamily: 'serif',
-          scaffoldBackgroundColor: background,
-          colorScheme: ColorScheme.fromSeed(seedColor: gold),
-        ),
-        darkTheme: ThemeData.dark(useMaterial3: true).copyWith(
-          scaffoldBackgroundColor: background,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: gold,
-            brightness: Brightness.dark,
-          ),
-        ),
-        themeMode: dark ? ThemeMode.dark : ThemeMode.light,
-        home: Scaffold(
-          body: pages[tab],
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: tab,
-            onDestinationSelected: (i) => setState(() => tab = i),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.auto_stories_outlined),
-                label: '书架',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.menu_book_outlined),
-                label: '作品',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.auto_awesome_outlined),
-                label: 'AI生图',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.public_outlined),
-                label: '设定集',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                label: '我的',
-              ),
-            ],
+    final lightTheme = ThemeData(
+      useMaterial3: true,
+      fontFamily: 'serif',
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.fromSeed(seedColor: gold),
+    );
+    final darkTheme = ThemeData.dark(useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: gold,
+        brightness: Brightness.dark,
+      ),
+    );
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: lightTheme,
+      home: ValueListenableBuilder<bool>(
+        valueListenable: appDarkMode,
+        builder: (_, dark, __) => Theme(
+          data: dark ? darkTheme : lightTheme,
+          child: Scaffold(
+            body: pages[tab],
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: tab,
+              onDestinationSelected: (i) => setState(() => tab = i),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.auto_stories_outlined),
+                  label: '书架',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.menu_book_outlined),
+                  label: '作品',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.auto_awesome_outlined),
+                  label: 'AI生图',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.public_outlined),
+                  label: '设定集',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline),
+                  label: '我的',
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -431,7 +467,18 @@ class _ArcReaderState extends State<ArcReaderApp> {
 Widget cover(String asset, {double width = 76, double height = 104}) =>
     ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: Image.asset(asset, width: 76, height: 104, fit: BoxFit.cover),
+      child: asset.isEmpty
+          ? Container(
+              width: width,
+              height: height,
+              color: const Color(0xFFE8DED0),
+              child: const Icon(Icons.menu_book_outlined, color: gold),
+            )
+          : SizedBox(
+              width: width,
+              height: height,
+              child: AiImagePreview(image: asset, fit: BoxFit.cover),
+            ),
     );
 Widget card(Widget child) => Container(
   padding: const EdgeInsets.all(12),
@@ -452,11 +499,7 @@ class Shelf extends StatefulWidget {
 class _ShelfState extends State<Shelf> {
   bool grid = false;
   String query = '';
-  final books = <List<String>>[
-    ['assets/cover_shanhai.png', '山海来信', '东方幻想 · 12 章 · 阅读进度 18%'],
-    ['assets/cover_changye.png', '长夜拾光', '都市异能 · 42 章 · 阅读进度 46%'],
-    ['assets/cover_yunchen.png', '云深不知处', '古风仙侠 · 25 章 · 已完结'],
-  ];
+  final books = <List<String>>[];
 
   @override
   void initState() {
@@ -465,28 +508,32 @@ class _ShelfState extends State<Shelf> {
   }
 
   Future<void> _loadImportedBook() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString('latest_imported_work');
-    if (raw == null || !mounted) return;
-    try {
-      final work = _ImportedWork.fromJson(
-        jsonDecode(raw) as Map<String, dynamic>,
-      );
-      setState(() {
-        books.removeWhere((book) => book[1] == work.title);
-        books.insert(0, [
-          'assets/cover_shanhai.png',
-          work.title,
-          '本地导入 · ${work.chapters.length} 章 · 可阅读',
-        ]);
-      });
-    } catch (_) {}
+    final works = await ImportedWorkStore.loadAll();
+    if (!mounted) return;
+    setState(() {
+      books
+        ..clear()
+        ..addAll(
+          works.map(
+            (work) => [
+              work.cover,
+              work.title,
+              '本地导入 · ${work.chapters.length} 章 · 可阅读',
+            ],
+          ),
+        );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final visible = books.where((b) => b[1].contains(query)).toList();
-    final body = grid
+    final body = visible.isEmpty
+        ? const Padding(
+            padding: EdgeInsets.only(top: 72),
+            child: Center(child: Text('书架为空，请从“作品”导入小说')),
+          )
+        : grid
         ? GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -587,43 +634,67 @@ class _ShelfState extends State<Shelf> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString('latest_imported_work');
-    var isImported = false;
-    if (raw != null) {
-      try {
-        isImported =
-            _ImportedWork.fromJson(
-              jsonDecode(raw) as Map<String, dynamic>,
-            ).title ==
-            title;
-      } catch (_) {}
-    }
-    if (!isImported) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(
-                        content: Text('内置示例作品不能删除'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
-      return;
-    }
-    await p.remove('latest_imported_work');
+    await ImportedWorkStore.delete(title);
     if (!mounted) return;
     setState(() => books.removeWhere((book) => book[1] == title));
-    ScaffoldMessenger.of(
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('作品已删除'),
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  Future<void> _showBookActions(BuildContext context, String title) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('删除小说'),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: gold),
+              title: const Text('从 AI 生图导入小说封面'),
+              onTap: () => Navigator.pop(sheetContext, 'cover'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'delete') {
+      await _confirmDeleteFromShelf(context, title);
+      return;
+    }
+    if (action != 'cover') return;
+    final image = await Navigator.push<String>(
       context,
-    ).showSnackBar(const SnackBar(
-                        content: Text('作品已删除'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
+      MaterialPageRoute(
+        builder: (_) => BookAiGalleryPage(title: title, pickMode: true),
+      ),
+    );
+    if (image == null || image.isEmpty) return;
+    final work = await ImportedWorkStore.find(title);
+    if (work == null) return;
+    await ImportedWorkStore.save(work.copyWith(cover: image));
+    await _loadImportedBook();
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('小说封面已更新，所有页面已同步')));
+    }
   }
 
   Widget _listBook(BuildContext context, List<String> b) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: InkWell(
       onTap: () => _openBook(context, b[1]),
-      onLongPress: () => _confirmDeleteFromShelf(context, b[1]),
+      onLongPress: () => _showBookActions(context, b[1]),
       child: card(
         Row(
           children: [
@@ -645,13 +716,6 @@ class _ShelfState extends State<Shelf> {
                     b[2],
                     style: const TextStyle(color: Colors.black54, fontSize: 11),
                   ),
-                  const SizedBox(height: 10),
-                  const LinearProgressIndicator(
-                    value: .3,
-                    color: gold,
-                    backgroundColor: Color(0xFFE5D8C2),
-                    minHeight: 3,
-                  ),
                 ],
               ),
             ),
@@ -663,13 +727,18 @@ class _ShelfState extends State<Shelf> {
   );
   Widget _gridBook(BuildContext context, List<String> b) => InkWell(
     onTap: () => _openBook(context, b[1]),
-    onLongPress: () => _confirmDeleteFromShelf(context, b[1]),
+    onLongPress: () => _showBookActions(context, b[1]),
     child: card(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Image.asset(b[0], width: double.infinity, fit: BoxFit.cover),
+            child: b[0].isEmpty
+                ? const ColoredBox(
+                    color: Color(0xFFE8DED0),
+                    child: Center(child: Icon(Icons.menu_book_outlined)),
+                  )
+                : AiImagePreview(image: b[0], fit: BoxFit.cover),
           ),
           const SizedBox(height: 8),
           Text(
@@ -720,10 +789,7 @@ class _ShelfState extends State<Shelf> {
       MaterialPageRoute(builder: (_) => BookDetail(title: title)),
     );
     await _loadImportedBook();
-    final p = await SharedPreferences.getInstance();
-    if (p.getString('latest_imported_work') == null && mounted) {
-      setState(() => books.removeWhere((book) => book[1] == title));
-    }
+    if (mounted) await _loadImportedBook();
   }
 }
 
@@ -748,7 +814,7 @@ class _BookDetailState extends State<BookDetail> {
   }
 
   Future<void> _loadImportedWork() async {
-    final work = await ImportedWorkStore.load();
+    final work = await ImportedWorkStore.find(title);
     final p = await SharedPreferences.getInstance();
     final savedChapter = p.getInt('reading_chapter_$title') ?? 1;
     if (mounted)
@@ -758,11 +824,7 @@ class _BookDetailState extends State<BookDetail> {
       });
   }
 
-  String get asset => title.contains('长夜')
-      ? 'assets/cover_changye.png'
-      : title.contains('云深')
-      ? 'assets/cover_yunchen.png'
-      : 'assets/cover_shanhai.png';
+  String get asset => importedWork?.cover ?? '';
 
   Future<void> _deleteBook(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -784,35 +846,14 @@ class _BookDetailState extends State<BookDetail> {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString('latest_imported_work');
-    var isImported = false;
-    if (raw != null) {
-      try {
-        isImported =
-            _ImportedWork.fromJson(
-              jsonDecode(raw) as Map<String, dynamic>,
-            ).title ==
-            title;
-      } catch (_) {}
-    }
-    if (!isImported) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(
-                        content: Text('内置示例作品不能删除'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
-      return;
-    }
-    await p.remove('latest_imported_work');
+    await ImportedWorkStore.delete(title);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(
-                        content: Text('作品已删除'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('作品已删除'),
+        duration: Duration(milliseconds: 1200),
+      ),
+    );
     Navigator.pop(context, true);
   }
 
@@ -855,26 +896,7 @@ class _BookDetailState extends State<BookDetail> {
                       },
                     ),
                   )
-                : List.generate(
-                    12,
-                    (i) => ListTile(
-                      leading: Text(
-                        '${i + 1}',
-                        style: const TextStyle(color: gold),
-                      ),
-                      title: Text('第${i + 1}章 · ${i == 1 ? '青梅不太对劲' : '山海来信'}'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ReaderPage(chapter: i + 1, bookTitle: title),
-                          ),
-                        );
-                      },
-                    ),
-                  )),
+                : const [ListTile(title: Text('暂无章节'))]),
           ],
         ),
       ),
@@ -884,7 +906,14 @@ class _BookDetailState extends State<BookDetail> {
   @override
   Widget build(BuildContext context) {
     final isImported = importedWork?.title == title;
-    final chapterCount = isImported ? importedWork!.chapters.length : 12;
+    if (!isImported) {
+      return Scaffold(
+        backgroundColor: background,
+        appBar: AppBar(backgroundColor: background, title: const Text('作品详情')),
+        body: const Center(child: Text('作品不存在或已删除')),
+      );
+    }
+    final chapterCount = importedWork!.chapters.length;
     final importedText = isImported
         ? importedWork!.chapters.map((chapter) => chapter.content).join('\n')
         : '';
@@ -930,12 +959,12 @@ class _BookDetailState extends State<BookDetail> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          isImported ? '本地导入作品' : '东方幻想 · 完结',
+                          '本地导入作品',
                           style: const TextStyle(color: Colors.black54),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '共$chapterCount章 · ${isImported ? importedText.length : 33128}字',
+                          '共$chapterCount章 · ${importedText.length}字',
                           style: const TextStyle(
                             color: Colors.black54,
                             fontSize: 12,
@@ -991,26 +1020,16 @@ class _BookDetailState extends State<BookDetail> {
                 Text('作品简介', style: TextStyle(fontWeight: FontWeight.w800)),
                 SizedBox(height: 10),
                 Text(
-                  isImported
-                      ? (importedText.isEmpty
-                            ? '暂无简介'
-                            : importedText.substring(
-                                0,
-                                importedText.length.clamp(0, 220),
-                              ))
-                      : '顾今朝从铺着鸳鸯锦被的床榻上醒来，茫然望着头顶绣着鸳鸯的锦帐。\n\n好消息：女主各具特色，皆为脱世子。',
+                  importedText.isEmpty
+                      ? '暂无简介'
+                      : importedText.substring(
+                          0,
+                          importedText.length.clamp(0, 220),
+                        ),
                   style: TextStyle(
                     color: Colors.black54,
                     height: 1.55,
                     fontSize: 12,
-                  ),
-                ),
-                SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Text(
-                    '展开',
-                    style: TextStyle(color: gold, fontWeight: FontWeight.w800),
                   ),
                 ),
               ],
@@ -1068,28 +1087,7 @@ class _BookDetailState extends State<BookDetail> {
                   height: 146,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    children: const [
-                      CharacterCard(
-                        name: '林静茹',
-                        role: '女主 · 温柔坚韧',
-                        intro: '外柔内刚的同行者，藏着一段旧日往事。',
-                        image: 'assets/ai_portrait.png',
-                      ),
-                      SizedBox(width: 12),
-                      CharacterCard(
-                        name: '顾今朝',
-                        role: '男主 · 山海客',
-                        intro: '误入山海的书生，正在寻找回家的路。',
-                        image: 'assets/cover_shanhai.png',
-                      ),
-                      SizedBox(width: 12),
-                      CharacterCard(
-                        name: '沈青萝',
-                        role: '配角 · 神秘少女',
-                        intro: '来历神秘的少女，熟悉这片沉睡的山海。',
-                        image: 'assets/cover_yunchen.png',
-                      ),
-                    ],
+                    children: const [Center(child: Text('暂无角色资料'))],
                   ),
                 ),
               ],
@@ -1130,7 +1128,7 @@ class _BookDetailState extends State<BookDetail> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isImported ? importedWork!.fileName : '山海来信.txt',
+                            importedWork!.fileName,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 12,
@@ -1138,7 +1136,7 @@ class _BookDetailState extends State<BookDetail> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            isImported ? '${importedText.length} 字' : '3.28 MB',
+                            '${importedText.length} 字',
                             style: TextStyle(
                               color: Colors.black54,
                               fontSize: 10,
@@ -1166,9 +1164,7 @@ class _BookDetailState extends State<BookDetail> {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
                 ),
                 SizedBox(height: 10),
-                _InfoLine('导入时间', '2025-05-20 10:56'),
-                _InfoLine('最后阅读', '2025-05-21 22:14'),
-                _InfoLine('字数统计', '33,128 字'),
+                _InfoLine('字数统计', '${importedText.length} 字'),
                 _InfoLine('章节数量', '$chapterCount 章'),
               ],
             ),
@@ -1195,13 +1191,11 @@ class _BookDetailState extends State<BookDetail> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ReaderPage(
-                        chapter: isImported
-                            ? (lastChapter < 1
-                                  ? 1
-                                  : (lastChapter > chapterCount
-                                        ? chapterCount
-                                        : lastChapter))
-                            : 2,
+                        chapter: lastChapter < 1
+                            ? 1
+                            : (lastChapter > chapterCount
+                                  ? chapterCount
+                                  : lastChapter),
                         bookTitle: title,
                       ),
                     ),
@@ -1227,13 +1221,7 @@ class GlobalSearchPage extends StatefulWidget {
 class _GlobalSearchPageState extends State<GlobalSearchPage> {
   final controller = TextEditingController();
   String query = '';
-  List<(String, String, String)> results = [];
-  static const demoResults = [
-    ('山海来信', '第2章 · 青梅不太对劲', '明夷沉默了一会，忽然开口，对众人道：“你们等在这里。”'),
-    ('山海来信', '第2章 · 青梅不太对劲', '“既然我负今日行动，便理应带你们所有人活着离开。”'),
-    ('山海来信', '第2章 · 青梅不太对劲', '“你怎么样？”李明夷赶忙问。'),
-    ('长夜拾光', '第8章 · 雨夜来客', '灯火在长街尽头摇曳，雨声落在青石板上。'),
-  ];
+  List<(String, String, String, int)> results = [];
 
   @override
   void initState() {
@@ -1242,9 +1230,8 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   }
 
   Future<void> _loadResults() async {
-    final work = await ImportedWorkStore.load();
-    final loaded = <(String, String, String)>[...demoResults];
-    if (work != null) {
+    final loaded = <(String, String, String, int)>[];
+    for (final work in await ImportedWorkStore.loadAll()) {
       for (var i = 0; i < work.chapters.length; i++) {
         final chapter = work.chapters[i];
         final preview = chapter.content.trim();
@@ -1253,6 +1240,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
           work.title,
           '第${i + 1}章 · ${chapter.title}',
           preview.substring(0, preview.length.clamp(0, 120)),
+          i + 1,
         ));
       }
     }
@@ -1369,10 +1357,8 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => ReaderPage(
-                          chapter: r.$1 == '山海来信' ? 2 : 8,
-                          bookTitle: r.$1,
-                        ),
+                        builder: (_) =>
+                            ReaderPage(chapter: r.$4, bookTitle: r.$1),
                       ),
                     ),
                     child: Padding(
@@ -1400,7 +1386,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
 class ReaderPage extends StatefulWidget {
   final int chapter;
   final String bookTitle;
-  const ReaderPage({required this.chapter, this.bookTitle = '山海来信', super.key});
+  const ReaderPage({required this.chapter, required this.bookTitle, super.key});
 
   @override
   State<ReaderPage> createState() => _ReaderPageState();
@@ -1442,6 +1428,9 @@ class _ReaderPageState extends State<ReaderPage> {
   String pullBookmarkLabel = '书签';
   double pullOffset = 0;
   double brightness = .55;
+  double readerFontSize = 18;
+  bool readerImmersive = true;
+  bool readerPageTurn = true;
   final PageController readingPages = PageController();
   int currentPage = 0;
   final List<_ReaderBookmark> bookmarks = [];
@@ -1449,7 +1438,9 @@ class _ReaderPageState extends State<ReaderPage> {
   List<_AiImagePageEntry> _imagePages = [];
   bool _ready = false;
   int _savedChapterPage = 0;
-  static const int _charsPerPage = 560;
+  // Keep each logical page comfortably below the viewport. The page itself
+  // remains scrollable so larger accessibility font sizes never overflow.
+  static const int _charsPerPage = 240;
 
   @override
   void initState() {
@@ -1458,10 +1449,14 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _init() async {
-    final work = await ImportedWorkStore.load();
+    await ReadingPreferencesStore.load();
+    final work = await ImportedWorkStore.find(widget.bookTitle);
     if (!mounted) return;
     setState(() {
       importedWork = work?.title == widget.bookTitle ? work : null;
+      readerFontSize = ReadingPreferencesStore.fontSize;
+      readerImmersive = ReadingPreferencesStore.immersive;
+      readerPageTurn = ReadingPreferencesStore.pageTurn;
       _ready = true;
       _flatCache = null;
     });
@@ -1490,7 +1485,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   List<int> get _chapterPageCounts {
     final chapters = importedWork?.chapters;
-    if (chapters == null) return List.filled(12, 2);
+    if (chapters == null) return const [];
     return [
       for (final c in chapters)
         c.content.trim().isEmpty
@@ -1499,7 +1494,7 @@ class _ReaderPageState extends State<ReaderPage> {
     ];
   }
 
-  int get _chapterCount => importedWork?.chapters.length ?? 12;
+  int get _chapterCount => importedWork?.chapters.length ?? 0;
 
   int _clampInt(int value, int min, int max) =>
       value < min ? min : (value > max ? max : value);
@@ -1557,6 +1552,7 @@ class _ReaderPageState extends State<ReaderPage> {
   int get _currentPageInChapter => _locationOf(currentPage).pageInChapter;
 
   int _initialGlobalPage() {
+    if (_totalPages == 0) return 0;
     final counts = _chapterPageCounts;
     final chapterIndex = _clampInt(widget.chapter - 1, 0, _chapterCount - 1);
     final saved = _clampInt(_savedChapterPage, 0, counts[chapterIndex] - 1);
@@ -1566,16 +1562,13 @@ class _ReaderPageState extends State<ReaderPage> {
 
   String _chapterHeaderText(int chapterNumber, String title) {
     final numbered =
-        RegExp(r'^第[0-9零一二三四五六七八九十百千万两]+[章节回卷集]').hasMatch(
-          title,
-        ) ||
+        RegExp(r'^第[0-9零一二三四五六七八九十百千万两]+[章节回卷集]').hasMatch(title) ||
         RegExp(r'^Chapter\s+\d+', caseSensitive: false).hasMatch(title);
     return numbered ? title : '第$chapterNumber章 · $title';
   }
 
   Widget _buildChapterHeader(int chapterIndex) {
-    final title = importedWork?.chapters[chapterIndex].title ??
-        (chapterIndex + 1 == 2 ? '青梅不太对劲' : '山海来信');
+    final title = importedWork?.chapters[chapterIndex].title ?? '未命名章节';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1590,39 +1583,6 @@ class _ReaderPageState extends State<ReaderPage> {
         const SizedBox(height: 20),
       ],
     );
-  }
-
-  Widget _buildDemoPage(int chapterIndex, int pageInChapter) {
-    final children = <Widget>[];
-    if (pageInChapter == 0) children.add(_buildChapterHeader(chapterIndex));
-    children.addAll(
-      pageInChapter == 0
-          ? const [
-              Text('红烛摇曳，簌字高悬。', style: TextStyle(fontSize: 18, height: 2.05)),
-              SizedBox(height: 18),
-              Text('“这是哪里？”', style: TextStyle(fontSize: 18, height: 2.05)),
-              SizedBox(height: 18),
-              Text('顾今朝从铺着鸳鸯锦被的床榻上醒来，茫然望着头顶绣着鸳鸯的锦帐。',
-                  style: TextStyle(fontSize: 18, height: 2.05)),
-              SizedBox(height: 18),
-              Text('“师兄醒了？”', style: TextStyle(fontSize: 18, height: 2.05)),
-            ]
-          : const [
-              Text('一道轻如烟絮的嗓音飘入耳中，带着几分缠绵，几分幽怨。',
-                  style: TextStyle(fontSize: 18, height: 2.05)),
-              SizedBox(height: 18),
-              Text('他微力侧过头，正对上了一双含情带怨的美眸。',
-                  style: TextStyle(fontSize: 18, height: 2.05)),
-              SizedBox(height: 18),
-              Text('林静茹穿着一袭大红嫁衣，红盖头已掀开，露出一张略显苍白的俏脸。',
-                  style: TextStyle(
-                    fontSize: 18,
-                    height: 2.05,
-                    color: Colors.black87,
-                  )),
-            ],
-    );
-    return _ReadingPageContent(children: children);
   }
 
   Widget _buildPage(int globalPage) {
@@ -1655,7 +1615,10 @@ class _ReaderPageState extends State<ReaderPage> {
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 420),
-              child: AiImagePreview(image: flat.imagePath!, fit: BoxFit.contain),
+              child: AiImagePreview(
+                image: flat.imagePath!,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -1669,7 +1632,11 @@ class _ReaderPageState extends State<ReaderPage> {
     final chapterIndex = flat.chapterIndex;
     final pageInChapter = flat.pageInChapter;
     final chapters = importedWork?.chapters;
-    if (chapters == null) return _buildDemoPage(chapterIndex, pageInChapter);
+    if (chapters == null) {
+      return const _ReadingPageContent(
+        children: [Text('暂无可阅读内容', style: TextStyle(fontSize: 18))],
+      );
+    }
     if (chapterIndex < 0 || chapterIndex >= chapters.length) {
       return const _ReadingPageContent(
         children: [Text('找不到该章节内容', style: TextStyle(fontSize: 18))],
@@ -1690,13 +1657,16 @@ class _ReaderPageState extends State<ReaderPage> {
         if (pageInChapter == 0) _buildChapterHeader(chapterIndex),
         Text(
           content.substring(start, end),
-          style: const TextStyle(fontSize: 18, height: 2.05),
+          style: TextStyle(fontSize: readerFontSize, height: 2.05),
         ),
       ],
     );
   }
 
-  Future<void> _insertImagePage(String imagePath, {String label = 'AI 生成图片'}) async {
+  Future<void> _insertImagePage(
+    String imagePath, {
+    String label = 'AI 生成图片',
+  }) async {
     if (_totalPages == 0) return;
     final anchor = _flatPages[currentPage].textGlobal;
     final entry = _AiImagePageEntry(
@@ -1750,10 +1720,9 @@ class _ReaderPageState extends State<ReaderPage> {
     await AiImagePageStore.save(widget.bookTitle, _imagePages);
     if (!mounted) return;
     setState(() => _flatCache = null);
-    final target = _flatIndexOfTextGlobal(flat.textGlobal).clamp(
-      0,
-      _totalPages - 1,
-    ).toInt();
+    final target = _flatIndexOfTextGlobal(
+      flat.textGlobal,
+    ).clamp(0, _totalPages - 1).toInt();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && readingPages.hasClients) {
         readingPages.jumpToPage(target);
@@ -1862,8 +1831,12 @@ class _ReaderPageState extends State<ReaderPage> {
         p.getInt('reading_page_${widget.bookTitle}_${widget.chapter}') ?? 0;
     if (mounted) {
       setState(() {
-        bookmarks..clear()..addAll(loaded);
-        bookmarkedPages..clear()..addAll(pages);
+        bookmarks
+          ..clear()
+          ..addAll(loaded);
+        bookmarkedPages
+          ..clear()
+          ..addAll(pages);
       });
     }
   }
@@ -1884,10 +1857,7 @@ class _ReaderPageState extends State<ReaderPage> {
         'reading_page_${widget.bookTitle}_${flat.chapterIndex + 1}',
         flat.pageInChapter,
       );
-      p.setInt(
-        'reading_chapter_${widget.bookTitle}',
-        flat.chapterIndex + 1,
-      );
+      p.setInt('reading_chapter_${widget.bookTitle}', flat.chapterIndex + 1);
     });
   }
 
@@ -1911,7 +1881,9 @@ class _ReaderPageState extends State<ReaderPage> {
         bookmarkedPages.add(currentPage);
       });
     }
-    if (!bookmarks.any((b) => b.chapter == chapter && b.page == pageInChapter)) {
+    if (!bookmarks.any(
+      (b) => b.chapter == chapter && b.page == pageInChapter,
+    )) {
       setState(
         () => bookmarks.add(
           _ReaderBookmark(chapter, pageInChapter, '红烛摇曳，簌字高悬。'),
@@ -1961,7 +1933,8 @@ class _ReaderPageState extends State<ReaderPage> {
       bookmarked = false;
       bookmarkedPages.remove(currentPage);
       bookmarks.removeWhere(
-        (b) => b.chapter == flat.chapterIndex + 1 && b.page == flat.pageInChapter,
+        (b) =>
+            b.chapter == flat.chapterIndex + 1 && b.page == flat.pageInChapter,
       );
     });
     await _persistBookmarks();
@@ -1985,7 +1958,10 @@ class _ReaderPageState extends State<ReaderPage> {
         (b) => b.chapter == bookmark.chapter && b.page == bookmark.page,
       );
       if (bookmark.chapter >= 1 && bookmark.chapter <= _chapterCount) {
-        final global = _flatIndexOfTextPage(bookmark.chapter - 1, bookmark.page);
+        final global = _flatIndexOfTextPage(
+          bookmark.chapter - 1,
+          bookmark.page,
+        );
         bookmarkedPages.remove(global);
         if (bookmark.chapter == _currentChapterNumber &&
             bookmark.page == _currentPageInChapter) {
@@ -2084,6 +2060,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _toggleTheme() {
     appDarkMode.value = !appDarkMode.value;
+    ThemePreferenceStore.save();
     if (mounted) setState(() {});
   }
 
@@ -2097,7 +2074,7 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_currentChapterIndex >= 0 && _currentChapterIndex < chapters.length) {
       return chapters[_currentChapterIndex].title;
     }
-    return _currentChapterIndex + 1 == 2 ? '青梅不太对劲' : '山海来信';
+    return '未命名章节';
   }
 
   void _showChapters() {
@@ -2200,26 +2177,7 @@ class _ReaderPageState extends State<ReaderPage> {
           )
           .toList();
     }
-    return List.generate(
-      12,
-      (i) => ListTile(
-        leading: Text('${i + 1}', style: const TextStyle(color: gold)),
-        title: Text('第${i + 1}章 · ${i == 1 ? '青梅不太对劲' : '山海来信'}'),
-        trailing: i + 1 == _currentChapterNumber
-            ? const Icon(Icons.check, color: gold)
-            : null,
-        onTap: () {
-          Navigator.pop(context);
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  ReaderPage(chapter: i + 1, bookTitle: widget.bookTitle),
-            ),
-          );
-        },
-      ),
-    );
+    return const [ListTile(title: Text('暂无章节'))];
   }
 
   void _showProgress() {
@@ -2271,9 +2229,17 @@ class _ReaderPageState extends State<ReaderPage> {
     final readerProgress = _totalPages == 0
         ? 0.0
         : (currentPage + 1) / _totalPages;
+    if (_ready && importedWork == null) {
+      return Scaffold(
+        backgroundColor: background,
+        appBar: AppBar(backgroundColor: background, title: const Text('阅读器')),
+        body: const Center(child: Text('没有找到这本作品，请先导入小说')),
+      );
+    }
+    final controlsVisible = focused || !readerImmersive;
     return Scaffold(
       backgroundColor: background,
-      appBar: focused
+      appBar: controlsVisible
           ? AppBar(
               backgroundColor: background,
               title: Text(
@@ -2283,225 +2249,231 @@ class _ReaderPageState extends State<ReaderPage> {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              actions: focused
+              actions: controlsVisible
                   ? [
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_horiz),
-                      onSelected: (value) {
-                        if (value == 'bookmark') _toggleBookmark();
-                        if (value == 'search') _showGlobalSearch();
-                      },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: 'bookmark',
-                          child: Text(bookmarked ? '删除书签' : '添加书签'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'search',
-                          child: Text('全局搜索'),
-                        ),
-                      ],
-                    ),
-                  ]
-                : [],
-          )
-        : null,
-    body: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => focused = !focused),
-      onVerticalDragUpdate: (details) {
-        if (details.delta.dy > 0 || pullOffset > 0) {
-          setState(
-            () => pullOffset = (pullOffset + details.delta.dy).clamp(0, 110),
-          );
-        }
-      },
-      onVerticalDragEnd: (_) => _finishPullDown(),
-      child: Stack(
-        children: [
-          Transform.translate(
-            offset: Offset(0, pullOffset),
-            child: Column(
-              children: [
-                Expanded(
-                  child: ColorFiltered(
-                    colorFilter: ColorFilter.mode(
-                      Colors.black.withOpacity((1 - brightness) * .35),
-                      BlendMode.darken,
-                    ),
-                    child: PageView.builder(
-                      controller: readingPages,
-                      onPageChanged: (page) {
-                        setState(() {
-                          currentPage = page;
-                          bookmarked = bookmarkedPages.contains(page);
-                        });
-                        _persistReadingPosition();
-                      },
-                      itemCount: _ready ? _totalPages : 1,
-                      itemBuilder: (_, page) => _ready
-                          ? _buildPage(page)
-                          : const _ReadingPageContent(
-                              children: [
-                                SizedBox(height: 24),
-                                Text(
-                                  '加载中…',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
-                              ],
-                            ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_horiz),
+                        onSelected: (value) {
+                          if (value == 'bookmark') _toggleBookmark();
+                          if (value == 'search') _showGlobalSearch();
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'bookmark',
+                            child: Text(bookmarked ? '删除书签' : '添加书签'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'search',
+                            child: Text('全局搜索'),
+                          ),
+                        ],
+                      ),
+                    ]
+                  : [],
+            )
+          : null,
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () =>
+            setState(() => focused = readerImmersive ? !focused : true),
+        onVerticalDragUpdate: (details) {
+          if (details.delta.dy > 0 || pullOffset > 0) {
+            setState(
+              () => pullOffset = (pullOffset + details.delta.dy).clamp(0, 110),
+            );
+          }
+        },
+        onVerticalDragEnd: (_) => _finishPullDown(),
+        child: Stack(
+          children: [
+            Transform.translate(
+              offset: Offset(0, pullOffset),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ColorFiltered(
+                      colorFilter: ColorFilter.mode(
+                        Colors.black.withOpacity((1 - brightness) * .35),
+                        BlendMode.darken,
+                      ),
+                      child: PageView.builder(
+                        controller: readingPages,
+                        pageSnapping: readerPageTurn,
+                        onPageChanged: (page) {
+                          setState(() {
+                            currentPage = page;
+                            bookmarked = bookmarkedPages.contains(page);
+                          });
+                          _persistReadingPosition();
+                        },
+                        itemCount: _ready ? _totalPages : 1,
+                        itemBuilder: (_, page) => _ready
+                            ? _buildPage(page)
+                            : const _ReadingPageContent(
+                                children: [
+                                  SizedBox(height: 24),
+                                  Text(
+                                    '加载中…',
+                                    style: TextStyle(color: Colors.black54),
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
                   ),
-                ),
-                if (focused)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: surface,
-                      border: Border(top: BorderSide(color: Color(0xFFE5D8C2))),
-                    ),
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '$_currentChapterNumber/$_chapterCount',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.black54,
-                              ),
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                child: LinearProgressIndicator(
-                                  value: readerProgress,
-                                  minHeight: 3,
-                                  color: gold,
-                                  backgroundColor: Color(0xFFE5D8C2),
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '${(readerProgress * 100).round()}%',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
+                  if (controlsVisible)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: surface,
+                        border: Border(
+                          top: BorderSide(color: Color(0xFFE5D8C2)),
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _ReaderTool(
-                              icon: Icons.list,
-                              label: '目录',
-                              onTap: _showChapters,
-                            ),
-                            _ReaderTool(
-                              icon: Icons.wb_sunny_outlined,
-                              label: '主题',
-                              onTap: _toggleTheme,
-                            ),
-                            _ReaderTool(
-                              icon: Icons.image_outlined,
-                              label: 'AI图片',
-                              onTap: _showAiImageActions,
-                            ),
-                            _ReaderTool(
-                              icon: Icons.cloud_outlined,
-                              label: '设定集',
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => Scaffold(
-                                    backgroundColor: background,
-                                    appBar: AppBar(
+                      ),
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '$_currentChapterNumber/$_chapterCount',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: LinearProgressIndicator(
+                                    value: readerProgress,
+                                    minHeight: 3,
+                                    color: gold,
+                                    backgroundColor: Color(0xFFE5D8C2),
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${(readerProgress * 100).round()}%',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _ReaderTool(
+                                icon: Icons.list,
+                                label: '目录',
+                                onTap: _showChapters,
+                              ),
+                              _ReaderTool(
+                                icon: Icons.wb_sunny_outlined,
+                                label: '主题',
+                                onTap: _toggleTheme,
+                              ),
+                              _ReaderTool(
+                                icon: Icons.image_outlined,
+                                label: 'AI图片',
+                                onTap: _showAiImageActions,
+                              ),
+                              _ReaderTool(
+                                icon: Icons.cloud_outlined,
+                                label: '设定集',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => Scaffold(
                                       backgroundColor: background,
-                                      title: Text(
-                                        '${widget.bookTitle} · 设定集',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w900,
+                                      appBar: AppBar(
+                                        backgroundColor: background,
+                                        title: Text(
+                                          '${widget.bookTitle} · 设定集',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    body: Worlds(
-                                      initialTitle: widget.bookTitle,
+                                      body: Worlds(
+                                        initialTitle: widget.bookTitle,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            _ReaderTool(
-                              icon: Icons.settings_outlined,
-                              label: '设置',
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const ReadingPreferencesPage(),
+                              _ReaderTool(
+                                icon: Icons.settings_outlined,
+                                label: '设置',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ReadingPreferencesPage(),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(Icons.wb_sunny_outlined, size: 18),
-                            Expanded(
-                              child: Slider(
-                                value: brightness,
-                                min: .2,
-                                max: 1,
-                                divisions: 8,
-                                label: '${(brightness * 100).round()}%',
-                                onChanged: (v) =>
-                                    setState(() => brightness = v),
-                                activeColor: const Color(0xFF665F56),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              const Icon(Icons.wb_sunny_outlined, size: 18),
+                              Expanded(
+                                child: Slider(
+                                  value: brightness,
+                                  min: .2,
+                                  max: 1,
+                                  divisions: 8,
+                                  label: '${(brightness * 100).round()}%',
+                                  onChanged: (v) =>
+                                      setState(() => brightness = v),
+                                  activeColor: const Color(0xFF665F56),
+                                ),
                               ),
-                            ),
-                            const Icon(Icons.add, size: 18),
-                          ],
-                        ),
-                      ],
+                              const Icon(Icons.add, size: 18),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-              ],
-            ),
-          ),
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 180),
-            top: (bookmarked || pullBookmarkBadge) ? 0 : -54,
-            right: 18,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFFD94040),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(8)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.bookmark, color: Colors.white, size: 18),
-                  SizedBox(width: 5),
-                  Text(
-                    pullBookmarkLabel,
-                    style: TextStyle(color: Colors.white),
-                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 180),
+              top: (bookmarked || pullBookmarkBadge) ? 0 : -54,
+              right: 18,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFD94040),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bookmark, color: Colors.white, size: 18),
+                    SizedBox(width: 5),
+                    Text(
+                      pullBookmarkLabel,
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -2513,11 +2485,17 @@ class AiImagePage extends StatefulWidget {
 
 class _AiImagePageState extends State<AiImagePage> {
   int tab = 0;
-  bool quote = true;
   bool generating = false;
   String? generatedImage;
   String ratio = '横图 16:9';
   String style = '电影感';
+  late final TextEditingController prompt = TextEditingController();
+
+  @override
+  void dispose() {
+    prompt.dispose();
+    super.dispose();
+  }
 
   Future<void> _generate() async {
     if (generating) return;
@@ -2525,18 +2503,18 @@ class _AiImagePageState extends State<AiImagePage> {
     try {
       final result = await AiImageService.generate(
         prompt:
-            '${tab == 0 ? '小说人物' : '小说场景'}，$style，${ratio == '横图 16:9' ? '横构图' : '竖构图'}',
+            '${prompt.text.trim().isEmpty ? (tab == 0 ? '小说人物' : '小说场景') : prompt.text.trim()}，$style，${ratio == '横图 16:9' ? '横构图' : '竖构图'}',
         size: ratio == '横图 16:9' ? '1536x1024' : '1024x1536',
       );
       final localImage = await AiImageStorage.save(result, prefix: 'character');
       if (!mounted) return;
       setState(() => generatedImage = localImage ?? result);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(
-                        content: Text('图片生成成功'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('图片生成成功'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2631,36 +2609,22 @@ class _AiImagePageState extends State<AiImagePage> {
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                height: 82,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    '描述你想生成的画面……',
-                    style: TextStyle(color: Colors.white60, fontSize: 13),
+              TextField(
+                controller: prompt,
+                maxLines: 4,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: '描述你想生成的画面……',
+                  hintStyle: const TextStyle(color: Colors.white60),
+                  filled: true,
+                  fillColor: Colors.white10,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '引用当前段落',
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                  Switch(
-                    value: quote,
-                    onChanged: (v) => setState(() => quote = v),
-                    activeColor: gold,
-                  ),
-                ],
-              ),
               const Text(
                 '风格与比例',
                 style: TextStyle(color: Colors.white70, fontSize: 13),
@@ -2695,11 +2659,18 @@ class _AiImagePageState extends State<AiImagePage> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: generatedImage == null
-                    ? Image.asset(
-                        'assets/ai_portrait.png',
+                    ? const SizedBox(
                         width: double.infinity,
                         height: 158,
-                        fit: BoxFit.cover,
+                        child: ColoredBox(
+                          color: Color(0xFF1B2E42),
+                          child: Center(
+                            child: Text(
+                              '生成结果将在这里显示',
+                              style: TextStyle(color: Colors.white60),
+                            ),
+                          ),
+                        ),
                       )
                     : AiImagePreview(image: generatedImage!, fit: BoxFit.cover),
               ),
@@ -2933,12 +2904,7 @@ class CharacterCard extends StatelessWidget {
 
 class CharacterListPage extends StatelessWidget {
   const CharacterListPage({super.key});
-  static const characters = [
-    ('林静茹', '女主 · 温柔坚韧', 'assets/ai_portrait.png'),
-    ('顾今朝', '男主 · 山海客', 'assets/cover_shanhai.png'),
-    ('沈青萝', '配角 · 神秘少女', 'assets/cover_yunchen.png'),
-    ('谢沉舟', '配角 · 旧友', 'assets/cover_changye.png'),
-  ];
+  static const characters = <(String, String, String)>[];
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -2947,15 +2913,17 @@ class CharacterListPage extends StatelessWidget {
       backgroundColor: background,
       title: const Text('全部角色', style: TextStyle(fontWeight: FontWeight.w900)),
     ),
-    body: ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: characters.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final c = characters[index];
-        return CharacterCard(name: c.$1, role: c.$2, image: c.$3);
-      },
-    ),
+    body: characters.isEmpty
+        ? const Center(child: Text('暂无角色资料'))
+        : ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: characters.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final c = characters[index];
+              return CharacterCard(name: c.$1, role: c.$2, image: c.$3);
+            },
+          ),
   );
 }
 
@@ -2970,9 +2938,7 @@ class CharacterDetailPage extends StatelessWidget {
     super.key,
   });
 
-  String get fullBodyImage => image == 'assets/ai_portrait.png'
-      ? 'assets/cover_shanhai.png'
-      : 'assets/cover_changye.png';
+  String get fullBodyImage => image;
 
   void _showImages(BuildContext context) {
     showDialog<void>(
@@ -3206,7 +3172,7 @@ class CharacterDetailPage extends StatelessWidget {
               Text('角色详情', style: TextStyle(fontWeight: FontWeight.w800)),
               SizedBox(height: 10),
               Text(
-                '她是故事中重要的同行者，外表温柔安静，内心却有坚定的信念。她与主角在山海之间相遇，共同揭开一段被尘封的往事。',
+                '暂无角色详情，请先补充角色资料。',
                 style: TextStyle(
                   color: Colors.black54,
                   height: 1.6,
@@ -3223,9 +3189,9 @@ class CharacterDetailPage extends StatelessWidget {
             children: [
               Text('角色信息', style: TextStyle(fontWeight: FontWeight.w800)),
               SizedBox(height: 10),
-              _InfoLine('首次出现', '第1章'),
-              _InfoLine('相关章节', '8章'),
-              _InfoLine('人物关系', '主角同行者'),
+              _InfoLine('首次出现', '暂无'),
+              _InfoLine('相关章节', '暂无'),
+              _InfoLine('人物关系', '暂无'),
             ],
           ),
         ),
@@ -3245,9 +3211,7 @@ class CharacterCardPage extends StatelessWidget {
     super.key,
   });
 
-  String get fullBodyImage => image == 'assets/ai_portrait.png'
-      ? 'assets/cover_shanhai.png'
-      : 'assets/cover_changye.png';
+  String get fullBodyImage => image;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -3338,16 +3302,7 @@ class CharacterCardPage extends StatelessWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: const [
-                  _RelationChip(label: '萧景珩', relation: '倾心相爱'),
-                  _RelationChip(label: '慕云深', relation: '惺惺相惜'),
-                  _RelationChip(label: '沈清妍', relation: '情同姐妹'),
-                  _RelationChip(label: '林老太夫人', relation: '祖孙情深'),
-                ],
-              ),
+              Wrap(spacing: 8, runSpacing: 8, children: const [Text('暂无人物关系')]),
             ],
           ),
         ),
@@ -3475,16 +3430,8 @@ class RelationMapPage extends StatefulWidget {
 class _RelationMapPageState extends State<RelationMapPage> {
   late String selected = widget.selectedName;
   late String selectedImage = widget.selectedImage;
-  static const names = ['林静茹', '顾今朝', '安绮兮', '伊人姐', '姬婉', '小郎君', '师兄'];
-  static const images = [
-    'assets/ai_portrait.png',
-    'assets/cover_shanhai.png',
-    'assets/cover_yunchen.png',
-    'assets/cover_changye.png',
-    'assets/ai_portrait.png',
-    'assets/cover_yunchen.png',
-    'assets/cover_changye.png',
-  ];
+  static const names = <String>[];
+  static const images = <String>[];
 
   void select(String name, String image) => setState(() {
     selected = name;
@@ -3492,175 +3439,186 @@ class _RelationMapPageState extends State<RelationMapPage> {
   });
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFF0E1D2C),
-    appBar: AppBar(
+  Widget build(BuildContext context) {
+    if (names.isEmpty) {
+      return const Scaffold(body: Center(child: Text('暂无人物关系数据')));
+    }
+    return Scaffold(
       backgroundColor: const Color(0xFF0E1D2C),
-      foregroundColor: Colors.white,
-      title: const Text(
-        '世界百科 / 人物关系图',
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0E1D2C),
+        foregroundColor: Colors.white,
+        title: const Text(
+          '世界百科 / 人物关系图',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
       ),
-    ),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF142A3D),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF2C455A)),
-          ),
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _RelationTab(
-                      label: '世界百科',
-                      selected: false,
-                      onTap: () {},
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF142A3D),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF2C455A)),
+            ),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _RelationTab(
+                        label: '世界百科',
+                        selected: false,
+                        onTap: () => Navigator.pop(context),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _RelationTab(
-                      label: '人物关系',
-                      selected: true,
-                      onTap: () {},
+                    Expanded(
+                      child: _RelationTab(
+                        label: '人物关系',
+                        selected: true,
+                        onTap: () => Navigator.pop(context),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _RelationTab(
-                      label: '角色卡',
-                      selected: false,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CharacterCardPage(
-                            name: selected,
-                            role: '女主 · 合欢派圣女',
-                            image: selectedImage,
+                    Expanded(
+                      child: _RelationTab(
+                        label: '角色卡',
+                        selected: false,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CharacterCardPage(
+                              name: selected,
+                              role: '女主 · 合欢派圣女',
+                              image: selectedImage,
+                            ),
                           ),
                         ),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 370,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: CustomPaint(painter: _RelationLinesPainter()),
+                      ),
+                      _RelationNode(
+                        name: names[0],
+                        image: images[0],
+                        left: 118,
+                        top: 18,
+                        selected: selected == names[0],
+                        onTap: () => select(names[0], images[0]),
+                      ),
+                      _RelationNode(
+                        name: names[1],
+                        image: images[1],
+                        left: 118,
+                        top: 132,
+                        selected: selected == names[1],
+                        onTap: () => select(names[1], images[1]),
+                      ),
+                      _RelationNode(
+                        name: names[2],
+                        image: images[2],
+                        left: 12,
+                        top: 112,
+                        selected: selected == names[2],
+                        onTap: () => select(names[2], images[2]),
+                      ),
+                      _RelationNode(
+                        name: names[3],
+                        image: images[3],
+                        left: 224,
+                        top: 112,
+                        selected: selected == names[3],
+                        onTap: () => select(names[3], images[3]),
+                      ),
+                      _RelationNode(
+                        name: names[4],
+                        image: images[4],
+                        left: 12,
+                        top: 250,
+                        selected: selected == names[4],
+                        onTap: () => select(names[4], images[4]),
+                      ),
+                      _RelationNode(
+                        name: names[5],
+                        image: images[5],
+                        left: 224,
+                        top: 250,
+                        selected: selected == names[5],
+                        onTap: () => select(names[5], images[5]),
+                      ),
+                      _RelationNode(
+                        name: names[6],
+                        image: images[6],
+                        left: 118,
+                        top: 300,
+                        selected: selected == names[6],
+                        onTap: () => select(names[6], images[6]),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 370,
-                child: Stack(
+                ),
+                const Divider(color: Colors.white12),
+                Row(
                   children: [
-                    Positioned.fill(
-                      child: CustomPaint(painter: _RelationLinesPainter()),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.asset(
+                        selectedImage,
+                        width: 74,
+                        height: 86,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                    _RelationNode(
-                      name: names[0],
-                      image: images[0],
-                      left: 118,
-                      top: 18,
-                      selected: selected == names[0],
-                      onTap: () => select(names[0], images[0]),
-                    ),
-                    _RelationNode(
-                      name: names[1],
-                      image: images[1],
-                      left: 118,
-                      top: 132,
-                      selected: selected == names[1],
-                      onTap: () => select(names[1], images[1]),
-                    ),
-                    _RelationNode(
-                      name: names[2],
-                      image: images[2],
-                      left: 12,
-                      top: 112,
-                      selected: selected == names[2],
-                      onTap: () => select(names[2], images[2]),
-                    ),
-                    _RelationNode(
-                      name: names[3],
-                      image: images[3],
-                      left: 224,
-                      top: 112,
-                      selected: selected == names[3],
-                      onTap: () => select(names[3], images[3]),
-                    ),
-                    _RelationNode(
-                      name: names[4],
-                      image: images[4],
-                      left: 12,
-                      top: 250,
-                      selected: selected == names[4],
-                      onTap: () => select(names[4], images[4]),
-                    ),
-                    _RelationNode(
-                      name: names[5],
-                      image: images[5],
-                      left: 224,
-                      top: 250,
-                      selected: selected == names[5],
-                      onTap: () => select(names[5], images[5]),
-                    ),
-                    _RelationNode(
-                      name: names[6],
-                      image: images[6],
-                      left: 118,
-                      top: 300,
-                      selected: selected == names[6],
-                      onTap: () => select(names[6], images[6]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selected,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            '女主 · 合欢派圣女',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            '暂无人物关系数据',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const Divider(color: Colors.white12),
-              Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      selectedImage,
-                      width: 74,
-                      height: 86,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          selected,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          '女主 · 合欢派圣女',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          '关系：顾今朝 · 深爱    师兄 · 执念',
-                          style: TextStyle(color: Colors.white60, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _RelationTab extends StatelessWidget {
@@ -3812,12 +3770,12 @@ class _CharacterAiPageState extends State<CharacterAiPage> {
       );
       if (!mounted) return;
       setState(() => generatedImage = result);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(
-                        content: Text('图片生成成功'),
-                        duration: Duration(milliseconds: 1200),
-                      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('图片生成成功'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3908,7 +3866,7 @@ class _CharacterAiPageState extends State<CharacterAiPage> {
                 borderRadius: BorderRadius.circular(12),
                 child: generatedImage == null
                     ? Image.asset(
-                        mode == 0 ? widget.image : 'assets/cover_shanhai.png',
+                        widget.image,
                         height: 220,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -3944,18 +3902,32 @@ class _ParsedChapter {
 }
 
 class _ImportedWork {
+  final String id;
   final String fileName;
   final String title;
   final List<_ParsedChapter> chapters;
+  final String cover;
   const _ImportedWork({
+    required this.id,
     required this.fileName,
     required this.title,
     required this.chapters,
+    this.cover = '',
   });
 
+  _ImportedWork copyWith({String? cover}) => _ImportedWork(
+    id: id,
+    fileName: fileName,
+    title: title,
+    chapters: chapters,
+    cover: cover ?? this.cover,
+  );
+
   Map<String, dynamic> toJson() => {
+    'id': id,
     'fileName': fileName,
     'title': title,
+    'cover': cover,
     'chapters': chapters
         .map((chapter) => {'title': chapter.title, 'content': chapter.content})
         .toList(),
@@ -3972,35 +3944,104 @@ class _ImportedWork {
         )
         .toList();
     return _ImportedWork(
+      id: json['id']?.toString() ?? json['title']?.toString() ?? '',
       fileName: json['fileName']?.toString() ?? '',
       title: json['title']?.toString() ?? '未命名作品',
       chapters: chapterList,
+      cover: json['cover']?.toString() ?? '',
     );
   }
 }
 
 class ImportedWorkStore {
-  static Future<_ImportedWork?> load() async {
+  static const collectionKey = 'imported_works';
+
+  static Future<List<_ImportedWork>> loadAll() async {
     final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString('latest_imported_work');
-    if (raw == null || raw.isEmpty) return null;
-    try {
-      return _ImportedWork.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
+    final rawList = preferences.getStringList(collectionKey);
+    if (rawList != null) {
+      return rawList
+          .map((value) {
+            try {
+              final json = jsonDecode(value);
+              return json is Map
+                  ? _ImportedWork.fromJson(Map<String, dynamic>.from(json))
+                  : null;
+            } catch (_) {
+              return null;
+            }
+          })
+          .whereType<_ImportedWork>()
+          .toList();
     }
+    // Migrate the old single-work storage once, without creating demo data.
+    final legacy = preferences.getString('latest_imported_work');
+    if (legacy == null || legacy.isEmpty) return [];
+    try {
+      final work = _ImportedWork.fromJson(
+        jsonDecode(legacy) as Map<String, dynamic>,
+      );
+      await preferences.setStringList(collectionKey, [
+        jsonEncode(work.toJson()),
+      ]);
+      return [work];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<_ImportedWork?> find(String title) async {
+    final works = await loadAll();
+    for (final work in works) {
+      if (work.title == title) return work;
+    }
+    return null;
+  }
+
+  static Future<_ImportedWork?> load() async {
+    final works = await loadAll();
+    return works.isEmpty ? null : works.first;
   }
 
   static Future<void> save(_ImportedWork work) async {
     final preferences = await SharedPreferences.getInstance();
+    final works = await loadAll();
+    works.removeWhere((item) => item.id == work.id || item.title == work.title);
+    works.insert(0, work);
+    await preferences.setStringList(
+      collectionKey,
+      works.map((item) => jsonEncode(item.toJson())).toList(),
+    );
     await preferences.setString(
       'latest_imported_work',
       jsonEncode(work.toJson()),
     );
   }
 
+  static Future<void> delete(String title) async {
+    final preferences = await SharedPreferences.getInstance();
+    final works = await loadAll();
+    works.removeWhere((item) => item.title == title);
+    await preferences.setStringList(
+      collectionKey,
+      works.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    final latest = preferences.getString('latest_imported_work');
+    if (latest != null) {
+      try {
+        if (_ImportedWork.fromJson(
+              jsonDecode(latest) as Map<String, dynamic>,
+            ).title ==
+            title) {
+          await preferences.remove('latest_imported_work');
+        }
+      } catch (_) {}
+    }
+  }
+
   static Future<void> clear() async {
     final preferences = await SharedPreferences.getInstance();
+    await preferences.remove(collectionKey);
     await preferences.remove('latest_imported_work');
   }
 }
@@ -4085,19 +4126,12 @@ class _WorksState extends State<Works> {
   }
 
   Future<void> _loadImportedWork() async {
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString('latest_imported_work');
-    if (raw == null || !mounted) return;
-    try {
-      setState(() {
-        savedWork = _ImportedWork.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>,
-        );
-        importedWork = savedWork;
-      });
-    } catch (_) {
-      await preferences.remove('latest_imported_work');
-    }
+    final works = await ImportedWorkStore.loadAll();
+    if (!mounted) return;
+    setState(() {
+      savedWork = works.isEmpty ? null : works.first;
+      importedWork = savedWork;
+    });
   }
 
   Future<void> _pickFile() async {
@@ -4123,6 +4157,7 @@ class _WorksState extends State<Works> {
       final chapters = _parseChapters(text);
       final title = _titleFromFileName(pickedFile.name);
       final work = _ImportedWork(
+        id: title,
         fileName: pickedFile.name,
         title: title,
         chapters: chapters,
@@ -4133,9 +4168,7 @@ class _WorksState extends State<Works> {
         pendingImport = true;
         importing = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           duration: const Duration(milliseconds: 1200),
           content: Text('已选择《$title》，请点击下方“导入作品”确认'),
@@ -4144,9 +4177,7 @@ class _WorksState extends State<Works> {
     } on FormatException catch (error) {
       if (mounted) {
         setState(() => importing = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(milliseconds: 1200),
             content: Text(error.message),
@@ -4156,9 +4187,7 @@ class _WorksState extends State<Works> {
     } catch (error) {
       if (mounted) {
         setState(() => importing = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(milliseconds: 1200),
             content: Text('导入失败：$error'),
@@ -4171,9 +4200,7 @@ class _WorksState extends State<Works> {
   Future<void> _confirmImport() async {
     if (importing) return;
     if (!pendingImport || importedWork == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('请先点击上方“选择本地文件”'),
           duration: Duration(milliseconds: 1200),
@@ -4206,9 +4233,7 @@ class _WorksState extends State<Works> {
       importedWork = savedWork;
       pendingImport = false;
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('已取消导入，可重新选择文件'),
         duration: Duration(milliseconds: 1200),
@@ -4432,19 +4457,14 @@ class AiGalleryStore {
     required String bookTitle,
     required int category,
     required String prompt,
-    String? image,
+    required String image,
   }) async {
-    const previews = [
-      'assets/cover_shanhai.png',
-      'assets/ai_portrait.png',
-      'assets/cover_yunchen.png',
-    ];
     items.insert(
       0,
       _AiGalleryItem(
         bookTitle,
-        image ?? previews[category],
-        prompt.isEmpty ? 'AI 新作品' : prompt,
+        image,
+        prompt.isEmpty ? '未命名图片' : prompt,
         category,
       ),
     );
@@ -4455,22 +4475,18 @@ class AiGalleryStore {
 class BookAiGalleryPage extends StatefulWidget {
   final String title;
   final bool pickMode;
-  const BookAiGalleryPage({required this.title, this.pickMode = false, super.key});
+  const BookAiGalleryPage({
+    required this.title,
+    this.pickMode = false,
+    super.key,
+  });
   @override
   State<BookAiGalleryPage> createState() => _BookAiGalleryPageState();
 }
 
 class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
   int category = 0;
-  final categories = const ['场景', '人物', '物品'];
-  final images = const [
-    _AiGalleryItem('山海来信', 'assets/cover_shanhai.png', '山海初见', 0),
-    _AiGalleryItem('山海来信', 'assets/cover_shanhai.png', '云上鲸歌', 0),
-    _AiGalleryItem('山海来信', 'assets/cover_yunchen.png', '林静茹', 1),
-    _AiGalleryItem('山海来信', 'assets/ai_portrait.png', '红妆人物', 1),
-    _AiGalleryItem('山海来信', 'assets/cover_changye.png', '旧城灯火', 2),
-    _AiGalleryItem('山海来信', 'assets/cover_shanhai.png', '月下归舟', 2),
-  ];
+  final categories = const ['场景', '人物', '物品', '其他'];
 
   @override
   void initState() {
@@ -4480,7 +4496,7 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
     });
   }
 
-  List<_AiGalleryItem> get visibleImages => [...images, ...AiGalleryStore.items]
+  List<_AiGalleryItem> get visibleImages => AiGalleryStore.items
       .where(
         (item) => item.bookTitle == widget.title && item.category == category,
       )
@@ -4751,7 +4767,7 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
     if (generating) return;
     setState(() => generating = true);
     try {
-      final categoryName = ['场景', '人物', '物品'][category];
+      final categoryName = ['场景', '人物', '物品', '其他'][category];
       final result = await AiImageService.generate(
         prompt:
             '${prompt.text.trim()}，${categoryName}类小说插画，${mode == 0 ? '参考图风格' : '高质量原创构图'}',
@@ -4838,12 +4854,12 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
               const SizedBox(height: 8),
               Row(
                 children: List.generate(
-                  3,
+                  4,
                   (i) => Expanded(
                     child: Padding(
-                      padding: EdgeInsets.only(right: i == 2 ? 0 : 8),
+                      padding: EdgeInsets.only(right: i == 3 ? 0 : 8),
                       child: _GenerateChoice(
-                        label: ['场景', '人物', '物品'][i],
+                        label: ['场景', '人物', '物品', '其他'][i],
                         selected: category == i,
                         onTap: () => setState(() => category = i),
                       ),
@@ -5062,8 +5078,27 @@ class _GenerateChoice extends StatelessWidget {
   );
 }
 
-class Gallery extends StatelessWidget {
+class Gallery extends StatefulWidget {
   const Gallery({super.key});
+  @override
+  State<Gallery> createState() => _GalleryState();
+}
+
+class _GalleryState extends State<Gallery> {
+  List<_ImportedWork> works = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final loaded = await ImportedWorkStore.loadAll();
+    await AiGalleryStore.load();
+    if (mounted) setState(() => works = loaded);
+  }
+
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(18),
@@ -5087,18 +5122,19 @@ class Gallery extends StatelessWidget {
         style: TextStyle(color: Colors.black54),
       ),
       const SizedBox(height: 12),
-      ...[
-        ('山海来信', '东方幻想 · 18张图片', 'assets/cover_shanhai.png'),
-        ('长夜难明', '悬疑奇幻 · 8张图片', 'assets/cover_changye.png'),
-        ('云深知处', '古风仙侠 · 12张图片', 'assets/cover_yunchen.png'),
-      ].map(
-        (book) => Padding(
+      if (works.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(top: 48),
+          child: Center(child: Text('暂无作品，请先在“作品”中导入小说')),
+        ),
+      ...works.map(
+        (work) => Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: InkWell(
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => BookAiGalleryPage(title: book.$1),
+                builder: (_) => BookAiGalleryPage(title: work.title),
               ),
             ),
             borderRadius: BorderRadius.circular(16),
@@ -5107,11 +5143,18 @@ class Gallery extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      book.$3,
+                    child: SizedBox(
                       width: 64,
                       height: 76,
-                      fit: BoxFit.cover,
+                      child: work.cover.isEmpty
+                          ? const ColoredBox(
+                              color: Color(0xFFE8DED0),
+                              child: Icon(Icons.menu_book_outlined),
+                            )
+                          : AiImagePreview(
+                              image: work.cover,
+                              fit: BoxFit.cover,
+                            ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -5120,7 +5163,7 @@ class Gallery extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          book.$1,
+                          work.title,
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -5128,7 +5171,7 @@ class Gallery extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          book.$2,
+                          '${AiGalleryStore.items.where((item) => item.bookTitle == work.title).length} 张图片',
                           style: const TextStyle(
                             color: Colors.black54,
                             fontSize: 11,
@@ -5167,13 +5210,20 @@ class Worlds extends StatefulWidget {
 class _WorldsState extends State<Worlds> {
   int tab = 0;
   String? selectedTitle;
+  List<_ImportedWork> works = [];
   final Map<String, String> worldSettings = {};
 
   @override
   void initState() {
     super.initState();
     selectedTitle = widget.initialTitle;
+    _loadWorks();
     if (selectedTitle != null) _loadWorldSettings();
+  }
+
+  Future<void> _loadWorks() async {
+    final loaded = await ImportedWorkStore.loadAll();
+    if (mounted) setState(() => works = loaded);
   }
 
   Future<void> _loadWorldSettings() async {
@@ -5236,11 +5286,7 @@ class _WorldsState extends State<Worlds> {
     onTap: () => _editWorldSetting(key, title),
   );
 
-  final characters = const [
-    ('林静茹', '女主 · 温柔坚韧', '外柔内刚的同行者，藏着一段旧日往事。', 'assets/ai_portrait.png'),
-    ('顾今朝', '男主 · 山海客', '误入山海的书生，正在寻找回家的路。', 'assets/cover_shanhai.png'),
-    ('沈青萝', '配角 · 神秘少女', '来历神秘，熟悉这片沉睡的山海。', 'assets/cover_yunchen.png'),
-  ];
+  final characters = const <(String, String, String, String)>[];
 
   @override
   Widget build(BuildContext context) {
@@ -5269,17 +5315,13 @@ class _WorldsState extends State<Worlds> {
               style: TextStyle(color: Colors.black54),
             ),
             const SizedBox(height: 18),
-            ...[
-              ('山海来信', '东方幻想 · 世界观与角色', 'assets/cover_shanhai.png'),
-              ('长夜难明', '悬疑奇幻 · 暂未添加设定', 'assets/cover_changye.png'),
-              ('云深知处', '古风仙侠 · 暂未添加设定', 'assets/cover_yunchen.png'),
-            ].map(
-              (book) => Padding(
+            ...works.map(
+              (work) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
                   onTap: () {
                     setState(() {
-                      selectedTitle = book.$1;
+                      selectedTitle = work.title;
                       tab = 0;
                     });
                     _loadWorldSettings();
@@ -5290,11 +5332,11 @@ class _WorldsState extends State<Worlds> {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
-                          child: Image.asset(
-                            book.$3,
+                          child: Container(
                             width: 70,
                             height: 84,
-                            fit: BoxFit.cover,
+                            color: const Color(0xFFE8DED0),
+                            child: const Icon(Icons.menu_book_outlined),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -5303,7 +5345,7 @@ class _WorldsState extends State<Worlds> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                book.$1,
+                                work.title,
                                 style: const TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900,
@@ -5311,7 +5353,7 @@ class _WorldsState extends State<Worlds> {
                               ),
                               const SizedBox(height: 7),
                               Text(
-                                book.$2,
+                                '本地导入 · ${work.chapters.length} 章',
                                 style: const TextStyle(
                                   color: Colors.black54,
                                   fontSize: 11,
@@ -5361,11 +5403,14 @@ class _WorldsState extends State<Worlds> {
           ),
           const SizedBox(height: 6),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '$selectedTitle · 故事资料库',
-                style: const TextStyle(color: Colors.black54),
+              Expanded(
+                child: Text(
+                  '$selectedTitle · 故事资料库',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.black54),
+                ),
               ),
               TextButton(
                 onPressed: () => setState(() => selectedTitle = null),
@@ -5408,7 +5453,7 @@ class _WorldsState extends State<Worlds> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    '这里将展示作品的时代背景、地域设定与世界规则。',
+                    '当前作品尚未填写世界观资料。',
                     style: TextStyle(color: Colors.black54, height: 1.6),
                   ),
                   SizedBox(height: 18),
@@ -5423,16 +5468,9 @@ class _WorldsState extends State<Worlds> {
               ),
             ),
           ] else ...[
-            ...characters.map(
-              (c) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _WorldCharacterRow(
-                  name: c.$1,
-                  role: c.$2,
-                  intro: c.$3,
-                  image: c.$4,
-                ),
-              ),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Center(child: Text('暂无角色资料')),
             ),
           ],
         ],
@@ -5637,6 +5675,30 @@ class _ReadingPreferencesPageState extends State<ReadingPreferencesPage> {
   double fontSize = 18;
   bool immersive = true;
   bool pageTurn = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await ReadingPreferencesStore.load();
+    if (!mounted) return;
+    setState(() {
+      fontSize = ReadingPreferencesStore.fontSize;
+      immersive = ReadingPreferencesStore.immersive;
+      pageTurn = ReadingPreferencesStore.pageTurn;
+    });
+  }
+
+  Future<void> _save() async {
+    ReadingPreferencesStore.fontSize = fontSize;
+    ReadingPreferencesStore.immersive = immersive;
+    ReadingPreferencesStore.pageTurn = pageTurn;
+    await ReadingPreferencesStore.save();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: background,
@@ -5672,7 +5734,10 @@ class _ReadingPreferencesPageState extends State<ReadingPreferencesPage> {
                 max: 24,
                 divisions: 5,
                 activeColor: gold,
-                onChanged: (v) => setState(() => fontSize = v),
+                onChanged: (v) {
+                  setState(() => fontSize = v);
+                  _save();
+                },
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -5683,14 +5748,20 @@ class _ReadingPreferencesPageState extends State<ReadingPreferencesPage> {
                 ),
                 value: immersive,
                 activeColor: gold,
-                onChanged: (v) => setState(() => immersive = v),
+                onChanged: (v) {
+                  setState(() => immersive = v);
+                  _save();
+                },
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('翻页动效'),
                 value: pageTurn,
                 activeColor: gold,
-                onChanged: (v) => setState(() => pageTurn = v),
+                onChanged: (v) {
+                  setState(() => pageTurn = v);
+                  _save();
+                },
               ),
             ],
           ),
@@ -5800,9 +5871,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     await ApiRequestLogStore.clear();
     if (!mounted) return;
     setState(() => requestLogs = const []);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('API 请求日志已删除'),
         duration: Duration(milliseconds: 1200),
@@ -5893,9 +5962,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     await p.setString('ai_api_key', apiKey.text.trim());
     await p.setString('ai_model', model.text.trim());
     if (mounted)
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('AI 服务配置已保存'),
           duration: Duration(milliseconds: 1200),
@@ -5909,9 +5976,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     if (previousModel == null) {
       if (initialConfiguration.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('还没有可恢复的历史配置'),
               duration: Duration(milliseconds: 1200),
@@ -5930,9 +5995,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
             : '自定义模型';
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('已恢复本次打开页面前的配置'),
             duration: Duration(milliseconds: 1200),
@@ -5955,9 +6018,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     await p.setString('ai_api_key', apiKey.text);
     await p.setString('ai_model', model.text);
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('已恢复之前保存的 AI 配置'),
           duration: Duration(milliseconds: 1200),
@@ -6002,9 +6063,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       url = url.isEmpty ? arkBaseUrl : url;
     } else {
       if (url.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('当前模型需要填写 API Base URL'),
             duration: Duration(milliseconds: 1200),
@@ -6134,9 +6193,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       }
     } on TimeoutException {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('API 请求超时，请检查网络或服务地址'),
             duration: Duration(milliseconds: 1200),
@@ -6145,9 +6202,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(milliseconds: 1200),
             content: Text('API 连接失败：$error'),
@@ -6374,9 +6429,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     await _refreshCacheSize();
     if (mounted) {
       setState(() => clearingCache = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('AI 图片缓存已清理'),
           duration: Duration(milliseconds: 1200),
@@ -6393,9 +6446,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       await p.remove(key);
     }
     if (mounted)
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('阅读记录已清空'),
           duration: Duration(milliseconds: 1200),
@@ -6409,9 +6460,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     try {
       final folder = await AiImageStorage.openDirectory();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(milliseconds: 1200),
             content: Text('已打开 AI 图片文件夹：${folder.path}'),
@@ -6420,9 +6469,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(milliseconds: 1200),
             content: Text('打开文件夹失败：$error'),
