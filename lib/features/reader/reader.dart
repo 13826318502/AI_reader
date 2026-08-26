@@ -925,7 +925,11 @@ class _ReaderPageState extends State<ReaderPage> {
                         },
                         itemCount: _ready ? _totalPages : 1,
                         itemBuilder: (_, page) => _ready
-                            ? _buildPage(page)
+                            ? _BookTurnPage(
+                                controller: readingPages,
+                                index: page,
+                                child: _buildPage(page),
+                              )
                             : const _ReadingPageContent(
                                 children: [
                                   SizedBox(height: 24),
@@ -947,116 +951,123 @@ class _ReaderPageState extends State<ReaderPage> {
                         ),
                       ),
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 240),
+                        child: SingleChildScrollView(
+                          child: Column(
                             children: [
-                              Text(
-                                '$_currentChapterNumber/$_chapterCount',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '$_currentChapterNumber/$_chapterCount',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black54,
+                                    ),
                                   ),
-                                  child: LinearProgressIndicator(
-                                    value: readerProgress,
-                                    minHeight: 3,
-                                    color: gold,
-                                    backgroundColor: Color(0xFFE5D8C2),
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${(readerProgress * 100).round()}%',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _ReaderTool(
-                                icon: Icons.list,
-                                label: '目录',
-                                onTap: _showChapters,
-                              ),
-                              _ReaderTool(
-                                icon: Icons.wb_sunny_outlined,
-                                label: '主题',
-                                onTap: _toggleTheme,
-                              ),
-                              _ReaderTool(
-                                icon: Icons.image_outlined,
-                                label: 'AI图片',
-                                onTap: _showAiImageActions,
-                              ),
-                              _ReaderTool(
-                                icon: Icons.cloud_outlined,
-                                label: '设定集',
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => Scaffold(
-                                      backgroundColor: background,
-                                      appBar: AppBar(
-                                        backgroundColor: background,
-                                        title: Text(
-                                          '${widget.bookTitle} · 设定集',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
                                       ),
-                                      body: Worlds(
-                                        initialTitle: widget.bookTitle,
+                                      child: LinearProgressIndicator(
+                                        value: readerProgress,
+                                        minHeight: 3,
+                                        color: gold,
+                                        backgroundColor: Color(0xFFE5D8C2),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              _ReaderTool(
-                                icon: Icons.settings_outlined,
-                                label: '设置',
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const ReadingPreferencesPage(),
+                                  Text(
+                                    '${(readerProgress * 100).round()}%',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black54,
+                                    ),
                                   ),
-                                ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _ReaderTool(
+                                    icon: Icons.list,
+                                    label: '目录',
+                                    onTap: _showChapters,
+                                  ),
+                                  _ReaderTool(
+                                    icon: Icons.wb_sunny_outlined,
+                                    label: '主题',
+                                    onTap: _toggleTheme,
+                                  ),
+                                  _ReaderTool(
+                                    icon: Icons.image_outlined,
+                                    label: 'AI图片',
+                                    onTap: _showAiImageActions,
+                                  ),
+                                  _ReaderTool(
+                                    icon: Icons.cloud_outlined,
+                                    label: '设定集',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => Scaffold(
+                                          backgroundColor: background,
+                                          appBar: AppBar(
+                                            backgroundColor: background,
+                                            title: Text(
+                                              '${widget.bookTitle} · 设定集',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                          body: Worlds(
+                                            initialTitle: widget.bookTitle,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  _ReaderTool(
+                                    icon: Icons.settings_outlined,
+                                    label: '设置',
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const ReadingPreferencesPage(),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  const Icon(Icons.wb_sunny_outlined, size: 18),
+                                  Expanded(
+                                    child: Slider(
+                                      value: brightness,
+                                      min: .2,
+                                      max: 1,
+                                      divisions: 8,
+                                      label: '${(brightness * 100).round()}%',
+                                      onChanged: (v) =>
+                                          setState(() => brightness = v),
+                                      activeColor: const Color(0xFF665F56),
+                                    ),
+                                  ),
+                                  const Icon(Icons.add, size: 18),
+                                ],
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Icon(Icons.wb_sunny_outlined, size: 18),
-                              Expanded(
-                                child: Slider(
-                                  value: brightness,
-                                  min: .2,
-                                  max: 1,
-                                  divisions: 8,
-                                  label: '${(brightness * 100).round()}%',
-                                  onChanged: (v) =>
-                                      setState(() => brightness = v),
-                                  activeColor: const Color(0xFF665F56),
-                                ),
-                              ),
-                              const Icon(Icons.add, size: 18),
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                 ],

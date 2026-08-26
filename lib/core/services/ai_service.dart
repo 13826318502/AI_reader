@@ -256,36 +256,41 @@ class AiImagePreview extends StatelessWidget {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    AppErrorLogStore.append(
-      error: details.exception,
-      stack: details.stack,
-      source: 'FlutterError',
-      context: details.library ?? '',
-    );
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    AppErrorLogStore.append(
-      error: error,
-      stack: stack,
-      source: 'PlatformDispatcher',
-    );
-    return true;
-  };
-  await ThemePreferenceStore.load();
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-  ]);
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+void main() {
   runZonedGuarded(
-    () => runApp(const ArcReaderApp()),
-    (error, stack) => AppErrorLogStore.append(
-      error: error,
-      stack: stack,
-      source: 'runZonedGuarded',
-    ),
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        AppErrorLogStore.append(
+          error: details.exception,
+          stack: details.stack,
+          source: 'FlutterError',
+          context: details.library ?? '',
+          diagnostics: details.toString(),
+        );
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        AppErrorLogStore.append(
+          error: error,
+          stack: stack,
+          source: 'PlatformDispatcher',
+        );
+        return true;
+      };
+      await ThemePreferenceStore.load();
+      await SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      runApp(const ArcReaderApp());
+    },
+    (error, stack) {
+      AppErrorLogStore.append(
+        error: error,
+        stack: stack,
+        source: 'runZonedGuarded',
+      );
+    },
   );
 }

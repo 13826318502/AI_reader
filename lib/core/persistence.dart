@@ -6,6 +6,9 @@ class AppErrorLog {
   final String error;
   final String stack;
   final String context;
+  final String sessionId;
+  final String kind;
+  final String diagnostics;
 
   const AppErrorLog({
     required this.timestamp,
@@ -13,6 +16,9 @@ class AppErrorLog {
     required this.error,
     required this.stack,
     required this.context,
+    required this.sessionId,
+    required this.kind,
+    required this.diagnostics,
   });
 
   Map<String, dynamic> toJson() => {
@@ -21,6 +27,9 @@ class AppErrorLog {
     'error': error,
     'stack': stack,
     'context': context,
+    'session_id': sessionId,
+    'kind': kind,
+    'diagnostics': diagnostics,
   };
 
   factory AppErrorLog.fromJson(Map<String, dynamic> json) => AppErrorLog(
@@ -31,6 +40,9 @@ class AppErrorLog {
     error: json['error']?.toString() ?? '',
     stack: json['stack']?.toString() ?? '',
     context: json['context']?.toString() ?? '',
+    sessionId: json['session_id']?.toString() ?? 'legacy',
+    kind: json['kind']?.toString() ?? 'runtime',
+    diagnostics: json['diagnostics']?.toString() ?? '',
   );
 }
 
@@ -38,6 +50,7 @@ class AppErrorLogStore {
   static const key = 'app_error_logs';
   static const maxEntries = 100;
   static bool _writing = false;
+  static final String sessionId = DateTime.now().toUtc().toIso8601String();
 
   static Future<List<AppErrorLog>> load() async {
     final p = await SharedPreferences.getInstance();
@@ -61,6 +74,7 @@ class AppErrorLogStore {
     StackTrace? stack,
     String source = 'runtime',
     String context = '',
+    String? diagnostics,
   }) async {
     if (_writing) return;
     _writing = true;
@@ -74,6 +88,9 @@ class AppErrorLogStore {
           error: error.toString(),
           stack: stack?.toString() ?? '',
           context: context,
+          sessionId: sessionId,
+          kind: source == 'FlutterError' ? 'flutter' : 'runtime',
+          diagnostics: diagnostics ?? '',
         ),
       );
       final p = await SharedPreferences.getInstance();

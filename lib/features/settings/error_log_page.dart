@@ -10,6 +10,7 @@ class AppErrorLogPage extends StatefulWidget {
 class _AppErrorLogPageState extends State<AppErrorLogPage> {
   List<AppErrorLog> logs = const [];
   bool loading = true;
+  bool showHistory = true;
 
   @override
   void initState() {
@@ -31,9 +32,12 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
         (log) => [
           '时间：${log.timestamp.toLocal().toIso8601String()}',
           '来源：${log.source}',
+          '类型：${log.kind}',
+          '会话：${log.sessionId}',
           '上下文：${log.context}',
           '错误：${log.error}',
           '堆栈：\n${log.stack}',
+          if (log.diagnostics.isNotEmpty) '诊断：\n${log.diagnostics}',
         ].join('\n'),
       )
       .join('\n\n==============================\n\n');
@@ -70,6 +74,11 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
     if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final visibleLogs = showHistory
+        ? logs
+        : logs
+              .where((log) => log.sessionId == AppErrorLogStore.sessionId)
+              .toList();
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -85,15 +94,33 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
             onPressed: logs.isEmpty ? null : _export,
             icon: const Icon(Icons.file_download_outlined),
           ),
+          IconButton(
+            tooltip: showHistory ? '仅看本次启动' : '查看全部历史',
+            onPressed: logs.isEmpty
+                ? null
+                : () => setState(() => showHistory = !showHistory),
+            icon: Icon(showHistory ? Icons.history : Icons.bug_report_outlined),
+          ),
         ],
       ),
       body: logs.isEmpty
           ? const Center(child: Text('暂无错误记录'))
           : ListView.builder(
               padding: const EdgeInsets.all(18),
-              itemCount: logs.length + 1,
+              itemCount: visibleLogs.length + 2,
               itemBuilder: (_, index) {
-                if (index == logs.length) {
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      showHistory
+                          ? '显示全部 ${logs.length} 条记录；其中旧记录可能来自之前版本。'
+                          : '仅显示本次启动产生的 ${visibleLogs.length} 条记录。',
+                      style: TextStyle(color: mutedText, fontSize: 12),
+                    ),
+                  );
+                }
+                if (index == visibleLogs.length + 1) {
                   return OutlinedButton(
                     onPressed: _clear,
                     style: OutlinedButton.styleFrom(
@@ -102,7 +129,7 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
                     child: const Text('清空错误日志'),
                   );
                 }
-                final log = logs[index];
+                final log = visibleLogs[index - 1];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: ExpansionTile(
@@ -124,6 +151,14 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
                           style: const TextStyle(fontSize: 12, height: 1.4),
                         ),
                       ),
+                      if (log.diagnostics.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: SelectableText(
+                            '\n诊断信息：\n${log.diagnostics}',
+                            style: const TextStyle(fontSize: 11, height: 1.3),
+                          ),
+                        ),
                     ],
                   ),
                 );

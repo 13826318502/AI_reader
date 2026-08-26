@@ -57,3 +57,85 @@ class _InfoLine extends StatelessWidget {
     ),
   );
 }
+
+class _BookTurnPage extends StatelessWidget {
+  final PageController controller;
+  final int index;
+  final Widget child;
+
+  const _BookTurnPage({
+    required this.controller,
+    required this.index,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (context, child) {
+        final page = controller.hasClients && controller.page != null
+            ? controller.page!
+            : index.toDouble();
+        final delta = (page - index).clamp(-1.0, 1.0);
+        final progress = delta.abs();
+        // PageView 会预构建相邻页；静止态不对相邻页做 3D 变换，
+        // 避免变换后的边缘从页面缝隙中露出斜线。
+        if (progress < .01 || progress > .98) return child!;
+
+        final forward = delta > 0;
+        final transform = Matrix4.identity()
+          ..setEntry(3, 2, 0.0012)
+          ..rotateY(forward ? -progress * .28 : progress * .28);
+        return ClipRect(
+          child: Transform(
+            alignment: forward ? Alignment.centerLeft : Alignment.centerRight,
+            transform: transform,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(.22 * progress),
+                    blurRadius: 18 * progress,
+                    offset: Offset(forward ? -8 : 8, 0),
+                  ),
+                ],
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  child!,
+                  Align(
+                    alignment: forward
+                        ? Alignment.centerLeft
+                        : Alignment.centerRight,
+                    child: FractionallySizedBox(
+                      widthFactor: .16 * progress,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: forward
+                                ? Alignment.centerLeft
+                                : Alignment.centerRight,
+                            end: forward
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            colors: [
+                              Colors.black.withOpacity(.20 * progress),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
