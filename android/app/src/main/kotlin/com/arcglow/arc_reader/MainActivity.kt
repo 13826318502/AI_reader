@@ -41,16 +41,22 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openFolder(path: String): Boolean {
-        // 1) 优先交给 MT 管理器：通过 mt://open 协议直接定位到目标目录，
-        //    并显式指定主 Activity，避免弹出多个 MT 选项。
-        val mtCandidates = listOf(
-            "bin.mt.plus" to "bin.mt.plus.MT",
-            "bin.mt.file" to "bin.mt.file.MT",
+        // 先交给 Android 选择器，保留 MT 管理器和系统文件管理器两个入口。
+        // 旧逻辑强制指定 MT，导致用户无法选择其他文件管理器。
+        val folder = File(path)
+        val folderUri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            folder,
         )
-        for ((pkg, activity) in mtCandidates) {
+        val mtIntents = arrayListOf<android.os.Parcelable>()
+        val mtCandidates = listOf(
+            "bin.mt.plus",
+            "bin.mt.file",
+        )
+        for (pkg in mtCandidates) {
             try {
                 packageManager.getPackageInfo(pkg, 0)
-                packageManager.getActivityInfo(ComponentName(pkg, activity), 0)
                 val uri = Uri.Builder()
                     .scheme("mt")
                     .authority("open")
@@ -58,38 +64,33 @@ class MainActivity : FlutterActivity() {
                     .build()
                 val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                     setPackage(pkg)
-                    component = ComponentName(pkg, activity)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                startActivity(intent)
-                return true
+                if (intent.resolveActivity(packageManager) != null) {
+                    mtIntents.add(intent)
+                }
             } catch (_: Exception) {
-                // 未安装或组件不存在，尝试下一个。
+                // 未安装或组件不存在，继续检查其他文件管理器。
             }
         }
 
-        // 2) 没有 MT 时，交给系统已安装的文件管理器。
-        val folder = File(path)
-        val uri = FileProvider.getUriForFile(
-            this,
-            "${applicationContext.packageName}.fileprovider",
-            folder,
-        )
-        val mimeCandidates = listOf(
-            "resource/folder",
-            "vnd.android.document/directory",
-            "*/*",
-        )
-        for (mime in mimeCandidates) {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mime)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            if (intent.resolveActivity(packageManager) != null) {
-                startActivity(Intent.createChooser(intent, "打开 AI 图片文件夹"))
-                return true
-            }
+        val generic = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(folderUri, "*/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (generic.resolveActivity(packageManager) != null) {
+            val chooser = Intent.createChooser(generic, "打开 AI 图片文件夹")
+            chooser.putParcelableArrayListExtra(
+                Intent.EXTRA_INITIAL_INTENTS,
+                mtIntents,
+            )
+            startActivity(chooser)
+            return true
+        }
+        if (mtIntents.isNotEmpty()) {
+            startActivity(Intent.createChooser(mtIntents.first() as Intent, "打开 AI 图片文件夹"))
+            return true
         }
         return false
     }

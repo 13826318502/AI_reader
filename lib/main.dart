@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -30,6 +31,101 @@ Color get surface =>
 Color get mutedText => appDarkMode.value ? Colors.white70 : Colors.black54;
 Color get primaryText => appDarkMode.value ? Colors.white : Colors.black87;
 const gold = Color(0xFFD99222);
+
+class AppErrorLog {
+  final DateTime timestamp;
+  final String source;
+  final String error;
+  final String stack;
+  final String context;
+
+  const AppErrorLog({
+    required this.timestamp,
+    required this.source,
+    required this.error,
+    required this.stack,
+    required this.context,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'timestamp': timestamp.toIso8601String(),
+    'source': source,
+    'error': error,
+    'stack': stack,
+    'context': context,
+  };
+
+  factory AppErrorLog.fromJson(Map<String, dynamic> json) => AppErrorLog(
+    timestamp:
+        DateTime.tryParse(json['timestamp']?.toString() ?? '') ??
+        DateTime.now(),
+    source: json['source']?.toString() ?? 'unknown',
+    error: json['error']?.toString() ?? '',
+    stack: json['stack']?.toString() ?? '',
+    context: json['context']?.toString() ?? '',
+  );
+}
+
+class AppErrorLogStore {
+  static const key = 'app_error_logs';
+  static const maxEntries = 100;
+  static bool _writing = false;
+
+  static Future<List<AppErrorLog>> load() async {
+    final p = await SharedPreferences.getInstance();
+    return (p.getStringList(key) ?? const [])
+        .map((value) {
+          try {
+            final json = jsonDecode(value);
+            return json is Map
+                ? AppErrorLog.fromJson(Map<String, dynamic>.from(json))
+                : null;
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<AppErrorLog>()
+        .toList();
+  }
+
+  static Future<void> append({
+    required Object error,
+    StackTrace? stack,
+    String source = 'runtime',
+    String context = '',
+  }) async {
+    if (_writing) return;
+    _writing = true;
+    try {
+      final entries = await load();
+      entries.insert(
+        0,
+        AppErrorLog(
+          timestamp: DateTime.now(),
+          source: source,
+          error: error.toString(),
+          stack: stack?.toString() ?? '',
+          context: context,
+        ),
+      );
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(
+        key,
+        entries
+            .take(maxEntries)
+            .map((entry) => jsonEncode(entry.toJson()))
+            .toList(),
+      );
+    } finally {
+      _writing = false;
+    }
+  }
+
+  static Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(key);
+  }
+}
 
 class ReadingPreferencesStore {
   static double fontSize = 18;
@@ -94,6 +190,24 @@ class AiImageStorage {
       if (entity is File) total += await entity.length();
     }
     return total;
+  }
+
+  static Future<List<File>> imageFiles() async {
+    final folder = await directory();
+    final files = <File>[];
+    await for (final entity in folder.list(
+      recursive: false,
+      followLinks: false,
+    )) {
+      if (entity is File &&
+          RegExp(
+            r'\.(png|jpg|jpeg|webp)$',
+            caseSensitive: false,
+          ).hasMatch(entity.path)) {
+        files.add(entity);
+      }
+    }
+    return files;
   }
 
   static Future<void> clear() async {
@@ -383,12 +497,36 @@ class AiImagePreview extends StatelessWidget {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AppErrorLogStore.append(
+      error: details.exception,
+      stack: details.stack,
+      source: 'FlutterError',
+      context: details.library ?? '',
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppErrorLogStore.append(
+      error: error,
+      stack: stack,
+      source: 'PlatformDispatcher',
+    );
+    return true;
+  };
   await ThemePreferenceStore.load();
   await SystemChrome.setPreferredOrientations(const [
     DeviceOrientation.portraitUp,
   ]);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  runApp(const ArcReaderApp());
+  runZonedGuarded(
+    () => runApp(const ArcReaderApp()),
+    (error, stack) => AppErrorLogStore.append(
+      error: error,
+      stack: stack,
+      source: 'runZonedGuarded',
+    ),
+  );
 }
 
 class ArcReaderApp extends StatefulWidget {
@@ -4437,6 +4575,17 @@ class AiGalleryStore {
           }
         }).whereType<_AiGalleryItem>(),
       );
+    await _recoverUnregisteredFiles();
+  }
+
+  static Future<void> _recoverUnregisteredFiles() async {
+    final files = await AiImageStorage.imageFiles();
+    final registered = items.map((item) => item.image).toSet();
+    for (final file in files) {
+      if (registered.contains(file.path)) continue;
+      items.add(_AiGalleryItem('', file.path, '未归类图片', 3));
+    }
+    if (items.length != registered.length) await _save();
   }
 
   static Future<void> _save() async {
@@ -4475,9 +4624,11 @@ class AiGalleryStore {
 class BookAiGalleryPage extends StatefulWidget {
   final String title;
   final bool pickMode;
+  final int initialCategory;
   const BookAiGalleryPage({
     required this.title,
     this.pickMode = false,
+    this.initialCategory = 0,
     super.key,
   });
   @override
@@ -4491,6 +4642,7 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
   @override
   void initState() {
     super.initState();
+    category = widget.pickMode ? 3 : widget.initialCategory.clamp(0, 3).toInt();
     AiGalleryStore.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -4791,7 +4943,8 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => BookAiGalleryPage(title: widget.title),
+          builder: (_) =>
+              BookAiGalleryPage(title: widget.title, initialCategory: category),
         ),
       );
     } catch (e) {
@@ -5196,6 +5349,28 @@ class _GalleryState extends State<Gallery> {
           ),
         ),
       ),
+      if (AiGalleryStore.items.any((item) => item.bookTitle.isEmpty))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    const BookAiGalleryPage(title: '', initialCategory: 3),
+              ),
+            ),
+            borderRadius: BorderRadius.circular(16),
+            child: card(
+              const ListTile(
+                leading: Icon(Icons.photo_library_outlined, color: gold),
+                title: Text('未归类图片'),
+                subtitle: Text('从本机 AI 图片目录恢复的历史图片'),
+                trailing: Icon(Icons.chevron_right, color: gold),
+              ),
+            ),
+          ),
+        ),
     ],
   );
 }
@@ -5650,6 +5825,32 @@ class Mine extends StatelessWidget {
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.payments_outlined, color: gold),
+              title: const Text('费用监控'),
+              subtitle: const Text(
+                '按 API 请求记录估算图片费用',
+                style: TextStyle(fontSize: 11),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ApiCostMonitorPage()),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bug_report_outlined, color: gold),
+              title: const Text('错误日志'),
+              subtitle: const Text(
+                '记录错误原因、堆栈和发生位置，便于 agent 定位',
+                style: TextStyle(fontSize: 11),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppErrorLogPage()),
+              ),
+            ),
+            ListTile(
               leading: const Icon(Icons.storage_outlined, color: gold),
               title: const Text('数据管理'),
               trailing: const Icon(Icons.chevron_right),
@@ -5663,6 +5864,290 @@ class Mine extends StatelessWidget {
       ),
     ],
   );
+}
+
+class AppErrorLogPage extends StatefulWidget {
+  const AppErrorLogPage({super.key});
+
+  @override
+  State<AppErrorLogPage> createState() => _AppErrorLogPageState();
+}
+
+class _AppErrorLogPageState extends State<AppErrorLogPage> {
+  List<AppErrorLog> logs = const [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final loaded = await AppErrorLogStore.load();
+    if (!mounted) return;
+    setState(() {
+      logs = loaded;
+      loading = false;
+    });
+  }
+
+  String _diagnosticText() => logs
+      .map(
+        (log) => [
+          '时间：${log.timestamp.toLocal().toIso8601String()}',
+          '来源：${log.source}',
+          '上下文：${log.context}',
+          '错误：${log.error}',
+          '堆栈：\n${log.stack}',
+        ].join('\n'),
+      )
+      .join('\n\n==============================\n\n');
+
+  Future<void> _copy() async {
+    if (logs.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _diagnosticText()));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('错误诊断信息已复制，可直接粘贴给 agent')));
+    }
+  }
+
+  Future<void> _export() async {
+    if (logs.isEmpty) return;
+    final folder = await AiImageStorage.directory();
+    final file = File('${folder.path}/error_diagnostics.txt');
+    await file.writeAsString(_diagnosticText(), flush: true);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('诊断日志已导出：${file.path}')));
+    }
+  }
+
+  Future<void> _clear() async {
+    await AppErrorLogStore.clear();
+    if (mounted) setState(() => logs = const []);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        backgroundColor: background,
+        title: const Text('错误日志'),
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          IconButton(
+            onPressed: logs.isEmpty ? null : _copy,
+            icon: const Icon(Icons.copy_outlined),
+          ),
+          IconButton(
+            onPressed: logs.isEmpty ? null : _export,
+            icon: const Icon(Icons.file_download_outlined),
+          ),
+        ],
+      ),
+      body: logs.isEmpty
+          ? const Center(child: Text('暂无错误记录'))
+          : ListView.builder(
+              padding: const EdgeInsets.all(18),
+              itemCount: logs.length + 1,
+              itemBuilder: (_, index) {
+                if (index == logs.length) {
+                  return OutlinedButton(
+                    onPressed: _clear,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                    ),
+                    child: const Text('清空错误日志'),
+                  );
+                }
+                final log = logs[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ExpansionTile(
+                    leading: const Icon(Icons.error_outline, color: Colors.red),
+                    title: Text(
+                      log.error,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${log.timestamp.toLocal()} · ${log.source}',
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SelectableText(
+                          '上下文：${log.context}\n\n${log.stack.isEmpty ? '无堆栈信息' : log.stack}',
+                          style: const TextStyle(fontSize: 12, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class ApiCostMonitorPage extends StatefulWidget {
+  const ApiCostMonitorPage({super.key});
+
+  @override
+  State<ApiCostMonitorPage> createState() => _ApiCostMonitorPageState();
+}
+
+class _ApiCostMonitorPageState extends State<ApiCostMonitorPage> {
+  final unitPrice = TextEditingController();
+  List<ApiRequestLog> logs = const [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    final saved = p.getDouble('ai_cost_unit_usd') ?? 0.04;
+    final loaded = await ApiRequestLogStore.load();
+    if (!mounted) return;
+    setState(() {
+      unitPrice.text = saved.toStringAsFixed(4);
+      logs = loaded;
+      loading = false;
+    });
+  }
+
+  double get price => double.tryParse(unitPrice.text.trim()) ?? 0;
+  List<ApiRequestLog> get successful =>
+      logs.where((entry) => entry.success).toList();
+  double get estimatedUsd => successful.length * price;
+
+  Future<void> _savePrice() async {
+    final value = price;
+    if (value < 0) return;
+    final p = await SharedPreferences.getInstance();
+    await p.setDouble('ai_cost_unit_usd', value);
+    if (mounted) setState(() {});
+  }
+
+  String _money(double value) => '\$${value.toStringAsFixed(4)}';
+
+  @override
+  void dispose() {
+    unitPrice.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        backgroundColor: background,
+        title: const Text('费用监控'),
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          card(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '本机 API 使用估算',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _money(estimatedUsd),
+                  style: const TextStyle(
+                    color: gold,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '成功请求 ${successful.length} 次 · 全部记录 ${logs.length} 条',
+                  style: const TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          card(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '估算单价',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: unitPrice,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    prefixText: '\$',
+                    suffixText: ' / 次',
+                    border: OutlineInputBorder(),
+                    hintText: '按服务商控制台价格填写',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _savePrice(),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '默认按每次成功生图估算。不同尺寸、模型和服务商价格可能不同，请以火山方舟账单为准。',
+                  style: TextStyle(color: Colors.black54, fontSize: 11),
+                ),
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: _savePrice,
+                  style: FilledButton.styleFrom(backgroundColor: gold),
+                  child: const Text('保存估算单价'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          card(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('说明', style: TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                const Text(
+                  '应用无法仅凭 API Key 直接读取服务商余额或真实账单，因此这里使用本机保存的 API 请求日志做估算，不会伪造实时余额。',
+                  style: TextStyle(color: Colors.black54, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ReadingPreferencesPage extends StatefulWidget {

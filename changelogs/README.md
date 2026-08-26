@@ -36,4 +36,6 @@
 
 | 日期 | 任务 | 文件 |
 |------|------|------|
-| （暂无） | | |
+| 2026-08-26 | AI 图片、费用监控与错误诊断 | `2026-08-26-1042-image-cost-error-logging.md` |
+| 2026-08-26 | 阅读器真实数据链路与界面稳定性补记 | `2026-08-26-1043-backfill-reader-and-layout-fixes.md` |
+| 2026-08-26 | 强化新对话的 changelog 规范 | `2026-08-26-1044-strengthen-agent-changelog-rule.md` |
