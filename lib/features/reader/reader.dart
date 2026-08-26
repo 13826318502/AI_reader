@@ -48,6 +48,9 @@ class _ReaderPageState extends State<ReaderPage> {
   double readerFontSize = 18;
   bool readerImmersive = true;
   bool readerPageTurn = true;
+  bool readerEyeCare = false;
+  String readerTheme = 'paper';
+  String readerPageMode = 'curl';
   final PageController readingPages = PageController();
   int currentPage = 0;
   final List<_ReaderBookmark> bookmarks = [];
@@ -74,6 +77,9 @@ class _ReaderPageState extends State<ReaderPage> {
       readerFontSize = ReadingPreferencesStore.fontSize;
       readerImmersive = ReadingPreferencesStore.immersive;
       readerPageTurn = ReadingPreferencesStore.pageTurn;
+      readerEyeCare = ReadingPreferencesStore.eyeCare;
+      readerTheme = ReadingPreferencesStore.theme;
+      readerPageMode = ReadingPreferencesStore.pageMode;
       _ready = true;
       _flatCache = null;
     });
@@ -274,7 +280,10 @@ class _ReaderPageState extends State<ReaderPage> {
         if (pageInChapter == 0) _buildChapterHeader(chapterIndex),
         Text(
           content.substring(start, end),
-          style: TextStyle(fontSize: readerFontSize, height: 2.05),
+          style: TextStyle(
+            fontSize: readerFontSize,
+            height: ReadingPreferencesStore.lineHeight,
+          ),
         ),
       ],
     );
@@ -854,8 +863,16 @@ class _ReaderPageState extends State<ReaderPage> {
       );
     }
     final controlsVisible = focused || !readerImmersive;
+    final readerBackground = readerTheme == 'dark'
+        ? const Color(0xFF17212B)
+        : readerTheme == 'green'
+        ? const Color(0xFFE7F0E4)
+        : background;
+    final readerInk = readerTheme == 'dark'
+        ? Colors.white.withOpacity(.92)
+        : const Color(0xFF2B2926);
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: readerBackground,
       appBar: controlsVisible
           ? AppBar(
               backgroundColor: background,
@@ -910,35 +927,42 @@ class _ReaderPageState extends State<ReaderPage> {
                   Expanded(
                     child: ColorFiltered(
                       colorFilter: ColorFilter.mode(
-                        Colors.black.withOpacity((1 - brightness) * .35),
+                        readerEyeCare
+                            ? const Color(0x18D99A3D)
+                            : Colors.black.withOpacity((1 - brightness) * .35),
                         BlendMode.darken,
                       ),
-                      child: PageView.builder(
-                        controller: readingPages,
-                        pageSnapping: readerPageTurn,
-                        onPageChanged: (page) {
-                          setState(() {
-                            currentPage = page;
-                            bookmarked = bookmarkedPages.contains(page);
-                          });
-                          _persistReadingPosition();
-                        },
-                        itemCount: _ready ? _totalPages : 1,
-                        itemBuilder: (_, page) => _ready
-                            ? _BookTurnPage(
-                                controller: readingPages,
-                                index: page,
-                                child: _buildPage(page),
-                              )
-                            : const _ReadingPageContent(
-                                children: [
-                                  SizedBox(height: 24),
-                                  Text(
-                                    '加载中…',
-                                    style: TextStyle(color: Colors.black54),
-                                  ),
-                                ],
-                              ),
+                      child: DefaultTextStyle(
+                        style: TextStyle(color: readerInk),
+                        child: PageView.builder(
+                          controller: readingPages,
+                          pageSnapping: readerPageTurn,
+                          onPageChanged: (page) {
+                            setState(() {
+                              currentPage = page;
+                              bookmarked = bookmarkedPages.contains(page);
+                            });
+                            _persistReadingPosition();
+                          },
+                          itemCount: _ready ? _totalPages : 1,
+                          itemBuilder: (_, page) => _ready
+                              ? readerPageMode == 'curl'
+                                    ? _BookTurnPage(
+                                        controller: readingPages,
+                                        index: page,
+                                        child: _buildPage(page),
+                                      )
+                                    : _buildPage(page)
+                              : const _ReadingPageContent(
+                                  children: [
+                                    SizedBox(height: 24),
+                                    Text(
+                                      '加载中…',
+                                      style: TextStyle(color: Colors.black54),
+                                    ),
+                                  ],
+                                ),
+                        ),
                       ),
                     ),
                   ),

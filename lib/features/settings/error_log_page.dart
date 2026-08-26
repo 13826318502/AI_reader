@@ -69,6 +69,29 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
     if (mounted) setState(() => logs = const []);
   }
 
+  Future<void> _confirmClear() async {
+    if (logs.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清理错误日志？'),
+        content: Text('将删除当前保存的 ${logs.length} 条记录。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -101,13 +124,18 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
                 : () => setState(() => showHistory = !showHistory),
             icon: Icon(showHistory ? Icons.history : Icons.bug_report_outlined),
           ),
+          IconButton(
+            tooltip: '清理错误日志',
+            onPressed: logs.isEmpty ? null : _confirmClear,
+            icon: const Icon(Icons.delete_sweep_outlined),
+          ),
         ],
       ),
       body: logs.isEmpty
           ? const Center(child: Text('暂无错误记录'))
           : ListView.builder(
               padding: const EdgeInsets.all(18),
-              itemCount: visibleLogs.length + 2,
+              itemCount: visibleLogs.length + 1,
               itemBuilder: (_, index) {
                 if (index == 0) {
                   return Padding(
@@ -118,15 +146,6 @@ class _AppErrorLogPageState extends State<AppErrorLogPage> {
                           : '仅显示本次启动产生的 ${visibleLogs.length} 条记录。',
                       style: TextStyle(color: mutedText, fontSize: 12),
                     ),
-                  );
-                }
-                if (index == visibleLogs.length + 1) {
-                  return OutlinedButton(
-                    onPressed: _clear,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                    ),
-                    child: const Text('清空错误日志'),
                   );
                 }
                 final log = visibleLogs[index - 1];

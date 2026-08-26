@@ -5,7 +5,12 @@ class _ReadingPageContent extends StatelessWidget {
   const _ReadingPageContent({required this.children});
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
+    padding: EdgeInsets.fromLTRB(
+      ReadingPreferencesStore.horizontalPadding,
+      16,
+      ReadingPreferencesStore.horizontalPadding,
+      24,
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
