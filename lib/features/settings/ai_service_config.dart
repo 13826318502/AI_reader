@@ -35,6 +35,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     final logs = await ApiRequestLogStore.load();
+    if (!mounted) return;
     final savedBaseUrl = p.getString('ai_base_url') ?? '';
     baseUrl.text =
         savedBaseUrl.isEmpty &&
@@ -56,6 +57,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       await p.setString('ai_model', savedModel);
       await p.setString('ai_provider', '火山方舟');
       await p.setString('ai_base_url', arkBaseUrl);
+      if (!mounted) return;
       baseUrl.text = arkBaseUrl;
     }
     if (mounted) {
@@ -108,72 +110,6 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     );
   }
 
-  String _formatLogTime(DateTime time) {
-    final local = time.toLocal();
-    String two(int value) => value.toString().padLeft(2, '0');
-    return '${local.year}-${two(local.month)}-${two(local.day)} '
-        '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
-  }
-
-  Widget _requestLogsCard() => card(
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'API 请求日志',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: requestLogs.isEmpty ? null : _clearRequestLogs,
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('删除日志'),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-            ),
-          ],
-        ),
-        Text(
-          requestLogs.isEmpty
-              ? '暂无请求记录'
-              : '最近 ${requestLogs.length} 条记录（最多保留 ${ApiRequestLogStore.maxEntries} 条）',
-          style: TextStyle(color: mutedText, fontSize: 12),
-        ),
-        if (requestLogs.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          ...requestLogs
-              .take(10)
-              .map(
-                (log) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: Icon(
-                    log.success
-                        ? Icons.check_circle_outline
-                        : Icons.error_outline,
-                    color: log.success ? Colors.green : Colors.red,
-                  ),
-                  title: Text(
-                    '${log.provider.isEmpty ? 'API' : log.provider} · ${log.model}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    '${_formatLogTime(log.timestamp)} · ${log.statusCode == null ? '无响应' : 'HTTP ${log.statusCode}'} · ${log.durationMs} ms\n'
-                    '${log.error ?? log.url}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: mutedText, fontSize: 11),
-                  ),
-                ),
-              ),
-        ],
-      ],
-    ),
-  );
-
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
     // 保存覆盖前的配置，供“恢复之前配置”使用。
@@ -201,6 +137,7 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
 
   Future<void> _restorePrevious() async {
     final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final previousModel = p.getString('ai_previous_model');
     if (previousModel == null) {
       if (initialConfiguration.isEmpty) {
@@ -268,179 +205,8 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     });
   }
 
-  Future<void> _testConnection() async {
-    // 兼容用户粘贴完整的“Bearer xxx”或只粘贴 Key 两种形式。
-    final key = apiKey.text.trim().replaceFirst(
-      RegExp(r'^(Bearer\s+)+', caseSensitive: false),
-      '',
-    );
-    final selected = model.text.trim();
-    var url = baseUrl.text.trim();
-    if (key.isEmpty || selected.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请先填写 API Base URL、API Key 和模型名称'),
-          duration: Duration(milliseconds: 1200),
-        ),
-      );
-      return;
-    }
-    if (selected.startsWith('doubao-seedream')) {
-      // Seedream 始终请求火山方舟，避免旧的 Base URL 导致请求发错服务。
-      url = arkBaseUrl;
-    } else if (provider == '火山方舟') {
-      url = url.isEmpty ? arkBaseUrl : url;
-    } else {
-      if (url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('当前模型需要填写 API Base URL'),
-            duration: Duration(milliseconds: 1200),
-          ),
-        );
-        return;
-      }
-      if (!url.endsWith('/images/generations')) {
-        url = '${url.replaceFirst(RegExp(r'/+$'), '')}/images/generations';
-      }
-    }
-    if (testing) return;
-    setState(() => testing = true);
-    try {
-      final isArk =
-          provider == '火山方舟' || selected.startsWith('doubao-seedream');
-      final body = isArk
-          ? <String, dynamic>{
-              'model': selected,
-              'prompt': '生成一张简单的测试图片，只用于检查 API 是否连通。',
-              'size': '2K',
-              'sequential_image_generation': 'disabled',
-              'stream': false,
-              'response_format': 'url',
-              'watermark': true,
-            }
-          : <String, dynamic>{
-              'model': selected,
-              'prompt': '生成一张简单的测试图片，只用于检查 API 是否连通。',
-              'size': '1024x1024',
-              'response_format': 'url',
-            };
-      final stopwatch = Stopwatch()..start();
-      http.Response response;
-      try {
-        response = await http
-            .post(
-              Uri.parse(url),
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer $key',
-              },
-              body: jsonEncode(body),
-            )
-            .timeout(const Duration(seconds: 90));
-      } catch (error) {
-        stopwatch.stop();
-        await ApiRequestLogStore.append(
-          ApiRequestLog(
-            timestamp: DateTime.now(),
-            provider: provider,
-            model: selected,
-            url: url,
-            statusCode: null,
-            durationMs: stopwatch.elapsedMilliseconds,
-            success: false,
-            error: error.toString(),
-          ),
-        );
-        if (mounted) {
-          final logs = await ApiRequestLogStore.load();
-          setState(() => requestLogs = logs);
-        }
-        rethrow;
-      }
-      stopwatch.stop();
-
-      Map<String, dynamic> responseBody = {};
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) responseBody = decoded;
-      } catch (_) {}
-
-      final requestSucceeded =
-          response.statusCode >= 200 && response.statusCode < 300;
-      await ApiRequestLogStore.append(
-        ApiRequestLog(
-          timestamp: DateTime.now(),
-          provider: provider,
-          model: selected,
-          url: url,
-          statusCode: response.statusCode,
-          durationMs: stopwatch.elapsedMilliseconds,
-          success: requestSucceeded,
-          error: requestSucceeded ? null : 'HTTP ${response.statusCode}',
-        ),
-      );
-      if (mounted) {
-        final logs = await ApiRequestLogStore.load();
-        setState(() => requestLogs = logs);
-      }
-
-      if (!mounted) return;
-      if (requestSucceeded) {
-        final hasImage =
-            responseBody['data'] is List &&
-            (responseBody['data'] as List).isNotEmpty;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(milliseconds: 1200),
-            content: Text(
-              hasImage ? 'API 连接成功，已返回测试图片' : 'API 请求成功，但响应中没有图片数据',
-            ),
-            backgroundColor: Colors.green.shade700,
-          ),
-        );
-      } else {
-        final error = responseBody['error'];
-        final message = error is Map
-            ? (error['message'] ?? error['code'] ?? '接口返回错误').toString()
-            : (responseBody['message'] ?? response.body).toString();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(milliseconds: 1200),
-            content: Text('API 连接失败（${response.statusCode}）：$message'),
-          ),
-        );
-      }
-    } on FormatException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('API 返回格式无法解析，请检查 Base URL 是否正确'),
-            duration: Duration(milliseconds: 1200),
-          ),
-        );
-      }
-    } on TimeoutException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('API 请求超时，请检查网络或服务地址'),
-            duration: Duration(milliseconds: 1200),
-          ),
-        );
-      }
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(milliseconds: 1200),
-            content: Text('API 连接失败：$error'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => testing = false);
-    }
+  void _mutate(VoidCallback update) {
+    if (mounted) setState(update);
   }
 
   @override
@@ -532,6 +298,22 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.account_balance_wallet_outlined,
+                      ),
+                      title: const Text('费用查询 AK / SK'),
+                      subtitle: const Text('独立加密保存，用于官方余额与账单查询'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const BillingCredentialsPage(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: model,
                       decoration: const InputDecoration(
@@ -592,10 +374,13 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              _requestLogsCard(),
+              _ApiRequestLogsCard(
+                requestLogs: requestLogs,
+                onClear: _clearRequestLogs,
+              ),
               const SizedBox(height: 12),
               const Text(
-                '提示：Seedream 4.5 为默认模型。API Key 仅保存在本机，正式版建议迁移到安全存储。',
+                '提示：Seedream 4.5 为默认模型。生图 API Key 保存在本机。费用 AK / SK 请在独立的费用查询凭据页管理，恢复生图配置不会改动费用凭据。',
                 style: TextStyle(color: Colors.black54, fontSize: 11),
               ),
             ],

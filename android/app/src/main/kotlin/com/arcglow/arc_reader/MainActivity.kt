@@ -13,9 +13,13 @@ class MainActivity : FlutterActivity() {
     private val channelName = "arc_reader/file_manager"
     private val readerControlsChannel = "arc_reader/reader_controls"
     private var volumePageTurn = false
+    private var billingCredentialStore: BillingCredentialStore? = null
+    private var sourceFileNavigator: SourceFileNavigator? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        billingCredentialStore = BillingCredentialStore(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        sourceFileNavigator = SourceFileNavigator(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 if (call.method != "openFolder") {
@@ -50,6 +54,14 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        sourceFileNavigator?.close()
+        sourceFileNavigator = null
+        billingCredentialStore?.close()
+        billingCredentialStore = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {

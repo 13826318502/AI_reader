@@ -8,12 +8,36 @@ class ArcReaderApp extends StatefulWidget {
 
 class _ArcReaderState extends State<ArcReaderApp> {
   int tab = 0;
-  late final List<Widget> pages;
+  late final List<Widget?> pages;
 
   @override
   void initState() {
     super.initState();
-    pages = const [Shelf(), Works(), Gallery(), Worlds(), Mine()];
+    pages = List<Widget?>.filled(5, null);
+    pages[0] = const Shelf();
+  }
+
+  Widget _createPage(int index) {
+    switch (index) {
+      case 0:
+        return const Shelf();
+      case 1:
+        return const Works();
+      case 2:
+        return const Gallery();
+      case 3:
+        return const Worlds();
+      case 4:
+        return const Mine();
+      default:
+        return const Shelf();
+    }
+  }
+
+  void _selectTab(int index) {
+    if (tab == index) return;
+    pages[index] ??= _createPage(index);
+    setState(() => tab = index);
   }
 
   @override
@@ -39,10 +63,15 @@ class _ArcReaderState extends State<ArcReaderApp> {
         builder: (_, dark, __) => Theme(
           data: dark ? darkTheme : lightTheme,
           child: Scaffold(
-            body: pages[tab],
+            body: IndexedStack(
+              index: tab,
+              children: [
+                for (final page in pages) page ?? const SizedBox.shrink(),
+              ],
+            ),
             bottomNavigationBar: NavigationBar(
               selectedIndex: tab,
-              onDestinationSelected: (i) => setState(() => tab = i),
+              onDestinationSelected: _selectTab,
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.auto_stories_outlined),

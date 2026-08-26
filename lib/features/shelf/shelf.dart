@@ -299,6 +299,5 @@ class _ShelfState extends State<Shelf> {
       MaterialPageRoute(builder: (_) => BookDetail(title: title)),
     );
     await _loadImportedBook();
-    if (mounted) await _loadImportedBook();
   }
 }

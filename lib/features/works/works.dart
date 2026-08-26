@@ -54,7 +54,10 @@ class _WorksState extends State<Works> {
         fileName: pickedFile.name,
         title: title,
         chapters: chapters,
+        sourceUri: pickedFile.identifier ?? '',
       );
+      if (work.sourceUri.isNotEmpty)
+        await SourceFileService.retain(work.sourceUri);
       if (!mounted) return;
       setState(() {
         importedWork = work;

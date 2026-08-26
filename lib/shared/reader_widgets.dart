@@ -63,6 +63,38 @@ class _InfoLine extends StatelessWidget {
   );
 }
 
+class _PageRevealClipper extends CustomClipper<Path> {
+  final double visibleFraction;
+  final bool revealFromRight;
+
+  const _PageRevealClipper({
+    required this.visibleFraction,
+    required this.revealFromRight,
+  });
+
+  @override
+  Path getClip(Size size) {
+    final width = size.width * visibleFraction.clamp(0.0, 1.0);
+    final left = revealFromRight ? 0.0 : size.width - width;
+    return Path()..addRect(Rect.fromLTWH(left, 0, width, size.height));
+  }
+
+  @override
+  bool shouldReclip(covariant _PageRevealClipper oldClipper) =>
+      oldClipper.visibleFraction != visibleFraction ||
+      oldClipper.revealFromRight != revealFromRight;
+}
+
+class _PaperTexturePainter extends CustomPainter {
+  const _PaperTexturePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {}
+
+  @override
+  bool shouldRepaint(covariant _PaperTexturePainter oldDelegate) => false;
+}
+
 class _BookReaderViewport extends StatefulWidget {
   final int pageCount;
   final int initialPage;
@@ -91,11 +123,14 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   late final AnimationController _animation;
   late final PageController _pageController;
   Animation<double>? _turn;
+  int _animationGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    _page = widget.initialPage.clamp(0, widget.pageCount - 1);
+    _page = widget.pageCount == 0
+        ? 0
+        : widget.initialPage.clamp(0, widget.pageCount - 1);
     _pageController = PageController(initialPage: _page);
     _animation =
         AnimationController(
@@ -107,6 +142,23 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   }
 
   @override
+  void didUpdateWidget(covariant _BookReaderViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pageCount == 0) return;
+    final target = widget.initialPage.clamp(0, widget.pageCount - 1);
+    if (target == _page && oldWidget.mode == widget.mode) return;
+    _animationGeneration++;
+    _animation.stop();
+    _turn = null;
+    _dragProgress = 0;
+    _page = target;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pageController.hasClients)
+        _pageController.jumpToPage(_page);
+    });
+  }
+
+  @override
   void dispose() {
     _animation.dispose();
     _pageController.dispose();
@@ -114,6 +166,7 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   }
 
   void jumpToPage(int page) {
+    if (widget.pageCount == 0) return;
     final target = page.clamp(0, widget.pageCount - 1);
     if (widget.mode == 'curl') {
       setState(() => _page = target);
@@ -124,12 +177,14 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   }
 
   void _animateTo(double target, {bool commit = false}) {
+    final generation = ++_animationGeneration;
     _turn = Tween<double>(
       begin: _dragProgress,
       end: target,
     ).animate(CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic));
     _animation.forward(from: 0).whenComplete(() {
       if (!mounted) return;
+      if (generation != _animationGeneration) return;
       if (commit) {
         final direction = target.sign.toInt();
         _page = (_page + direction).clamp(0, widget.pageCount - 1);
@@ -143,7 +198,13 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
-    if (_animation.isAnimating) return;
+    if (_animation.isAnimating) {
+      // Let a new gesture take over an unfinished turn. This keeps the page
+      // physically draggable at half-turn instead of forcing a full snap.
+      _animationGeneration++;
+      _animation.stop(canceled: false);
+      _turn = null;
+    }
     final next = (_dragProgress - details.delta.dx / _dragWidth).clamp(
       -1.0,
       1.0,
@@ -151,6 +212,13 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
     if ((next > 0 && _page == widget.pageCount - 1) ||
         (next < 0 && _page == 0)) {
       setState(() => _dragProgress = next * .16);
+      return;
+    }
+    if (next.abs() >= .999) {
+      final direction = next.sign.toInt();
+      _page = (_page + direction).clamp(0, widget.pageCount - 1);
+      widget.onPageChanged(_page);
+      setState(() => _dragProgress = 0);
       return;
     }
     setState(() => _dragProgress = next);
@@ -173,18 +241,20 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
     final amount = progress.abs().clamp(0.0, 1.0);
     final target = (_page + direction.toInt()).clamp(0, widget.pageCount - 1);
     final forward = direction > 0;
-    // Forward navigation is a left swipe: the current page lifts from the
-    // right book edge and turns toward the left. Backward navigation mirrors
-    // that motion from the left edge.
-    final rotation = forward ? amount * 1.570796 : -amount * 1.570796;
-    final transform = Matrix4.identity()
-      ..setEntry(3, 2, 0.0016)
-      ..rotateY(rotation);
+    Widget paperPage(int index) => RepaintBoundary(
+      key: ValueKey('reader-page-$index'),
+      child: CustomPaint(
+        painter: const _PaperTexturePainter(),
+        child: widget.pageBuilder(index),
+      ),
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         _dragWidth = constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : 1;
+        final visibleFraction = 1 - amount;
+        final foldWidth = (constraints.maxWidth * .11).clamp(28.0, 76.0);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onHorizontalDragUpdate: _onDragUpdate,
@@ -194,107 +264,107 @@ class _BookReaderViewportState extends State<_BookReaderViewport>
               fit: StackFit.expand,
               children: [
                 Positioned.fill(
-                  child: ColoredBox(
-                    color: const Color(0xFFF7EFE2),
-                    child: widget.pageBuilder(target),
-                  ),
-                ),
-                if (amount < .999)
-                  Transform(
-                    alignment: forward
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    transform: transform,
-                    transformHitTests: false,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(.34 * amount),
-                            blurRadius: 22 * amount,
-                            spreadRadius: 1.5,
-                            offset: Offset(forward ? -10 : 10, 0),
-                          ),
-                        ],
-                      ),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5EBDD),
-                              gradient: LinearGradient(
-                                begin: forward
-                                    ? Alignment.centerRight
-                                    : Alignment.centerLeft,
-                                end: forward
-                                    ? Alignment.centerLeft
-                                    : Alignment.centerRight,
-                                colors: const [
-                                  Color(0xFFE8D8C4),
-                                  Color(0xFFF8F0E4),
-                                  Color(0xFFF5EBDD),
-                                ],
-                              ),
-                            ),
-                          ),
-                          widget.pageBuilder(_page),
-                          Align(
-                            alignment: forward
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: .30 * amount,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: forward
-                                        ? Alignment.centerRight
-                                        : Alignment.centerLeft,
-                                    end: forward
-                                        ? Alignment.centerLeft
-                                        : Alignment.centerRight,
-                                    colors: [
-                                      Colors.black.withOpacity(.40 * amount),
-                                      Colors.white.withOpacity(.10 * amount),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                  child: ClipPath(
+                    // During a forward turn, only the right side of the
+                    // target page is revealed. The backward turn mirrors it
+                    // on the left, preventing both pages from overlapping.
+                    clipper: _PageRevealClipper(
+                      visibleFraction: amount,
+                      revealFromRight: !forward,
                     ),
-                  )
-                else
-                  const SizedBox.shrink(),
-                if (amount > .02)
-                  Align(
-                    alignment: forward
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: .024,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.black.withOpacity(.34 * amount),
-                              Colors.white.withOpacity(.72 * amount),
-                              Colors.transparent,
-                            ],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(.36 * amount),
-                              blurRadius: 14 * amount,
-                              spreadRadius: 1,
-                            ),
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFF7EFE2),
+                            Color(0xFFF1E4D1),
+                            Color(0xFFF8EEDD),
                           ],
                         ),
                       ),
+                      child: paperPage(target),
+                    ),
+                  ),
+                ),
+                if (amount < .999)
+                  Positioned.fill(
+                    child: ClipPath(
+                      clipper: _PageRevealClipper(
+                        visibleFraction: visibleFraction,
+                        revealFromRight: forward,
+                      ),
+                      child: paperPage(_page),
+                    ),
+                  ),
+                if (amount > .02)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: forward
+                        ? constraints.maxWidth * visibleFraction - foldWidth / 2
+                        : null,
+                    right: forward
+                        ? null
+                        : constraints.maxWidth * visibleFraction -
+                              foldWidth / 2,
+                    width: foldWidth,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Transform.translate(
+                          offset: Offset(forward ? 3 : -3, 0),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFC8B7A1),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(.30 * amount),
+                                  blurRadius: 9 * amount,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: forward
+                                  ? Alignment.centerLeft
+                                  : Alignment.centerRight,
+                              end: forward
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              colors: [
+                                Colors.black.withOpacity(.32 * amount),
+                                const Color(0xFFEBD9C1),
+                                const Color(0xFFF9F0E3),
+                                Colors.white.withOpacity(.66 * amount),
+                              ],
+                            ),
+                            border: Border(
+                              left: forward
+                                  ? BorderSide(
+                                      color: Colors.black.withOpacity(
+                                        .22 * amount,
+                                      ),
+                                      width: 1,
+                                    )
+                                  : BorderSide.none,
+                              right: forward
+                                  ? BorderSide.none
+                                  : BorderSide(
+                                      color: Colors.black.withOpacity(
+                                        .22 * amount,
+                                      ),
+                                      width: 1,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ],

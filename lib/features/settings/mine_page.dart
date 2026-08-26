@@ -51,7 +51,7 @@ class Mine extends StatelessWidget {
               leading: const Icon(Icons.payments_outlined, color: gold),
               title: const Text('费用监控'),
               subtitle: const Text(
-                '按 API 请求记录估算图片费用',
+                '官方余额、月度账单与本机估算',
                 style: TextStyle(fontSize: 11),
               ),
               trailing: const Icon(Icons.chevron_right),

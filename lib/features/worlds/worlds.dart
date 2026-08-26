@@ -1,5 +1,20 @@
 part of '../../main.dart';
 
+class _WorldDetailItem {
+  final String title;
+  final String content;
+
+  const _WorldDetailItem({required this.title, required this.content});
+
+  Map<String, String> toJson() => {'title': title, 'content': content};
+
+  factory _WorldDetailItem.fromJson(Map<String, dynamic> json) =>
+      _WorldDetailItem(
+        title: json['title']?.toString() ?? '未命名设定',
+        content: json['content']?.toString() ?? '',
+      );
+}
+
 class Worlds extends StatefulWidget {
   final String? initialTitle;
   const Worlds({this.initialTitle, super.key});
@@ -12,6 +27,7 @@ class _WorldsState extends State<Worlds> {
   String? selectedTitle;
   List<_ImportedWork> works = [];
   final Map<String, String> worldSettings = {};
+  final Map<String, List<_WorldDetailItem>> worldDetails = {};
 
   @override
   void initState() {
@@ -31,45 +47,67 @@ class _WorldsState extends State<Worlds> {
     if (title == null) return;
     final p = await SharedPreferences.getInstance();
     final loaded = <String, String>{};
+    final details = <String, List<_WorldDetailItem>>{};
     for (final key in ['region', 'power', 'era']) {
-      loaded[key] = p.getString('world_${title}_$key') ?? '';
+      final summary = p.getString('world_${title}_$key') ?? '';
+      loaded[key] = summary;
+      final rawItems = p.getString('world_${title}_${key}_items');
+      dynamic decoded;
+      try {
+        decoded = rawItems == null ? null : jsonDecode(rawItems);
+      } catch (_) {
+        decoded = null;
+      }
+      final items = decoded is List
+          ? decoded
+                .whereType<Map>()
+                .map(
+                  (item) => _WorldDetailItem.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .where((item) => item.content.isNotEmpty)
+                .toList()
+          : <_WorldDetailItem>[];
+      details[key] = items.isEmpty && summary.isNotEmpty
+          ? [_WorldDetailItem(title: '概述', content: summary)]
+          : items;
     }
     if (mounted)
       setState(() {
         worldSettings
           ..clear()
           ..addAll(loaded);
+        worldDetails
+          ..clear()
+          ..addAll(details);
       });
   }
 
-  Future<void> _editWorldSetting(String key, String title) async {
-    final controller = TextEditingController(text: worldSettings[key] ?? '');
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('编辑$title'),
-        content: TextField(
-          controller: controller,
-          maxLines: 4,
-          autofocus: true,
+  Future<void> _openWorldCategory(String key, String title) async {
+    final result = await Navigator.push<List<_WorldDetailItem>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _WorldCategoryPage(
+          bookTitle: selectedTitle!,
+          title: title,
+          initialItems: worldDetails[key] ?? const [],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
-    controller.dispose();
-    if (value == null || selectedTitle == null) return;
+    if (!mounted || result == null || selectedTitle == null) return;
     final p = await SharedPreferences.getInstance();
-    await p.setString('world_${selectedTitle}_$key', value);
-    if (mounted) setState(() => worldSettings[key] = value);
+    final bookTitle = selectedTitle!;
+    final summary = result.isEmpty ? '' : result.first.content;
+    await p.setString('world_${bookTitle}_$key', summary);
+    await p.setString(
+      'world_${bookTitle}_${key}_items',
+      jsonEncode(result.map((item) => item.toJson()).toList()),
+    );
+    setState(() {
+      worldSettings[key] = summary;
+      worldDetails[key] = result;
+    });
   }
 
   Widget _worldSettingRow(IconData icon, String key, String title) => ListTile(
@@ -83,10 +121,8 @@ class _WorldsState extends State<Worlds> {
       style: const TextStyle(fontSize: 11),
     ),
     trailing: const Icon(Icons.edit_outlined, color: Colors.black38),
-    onTap: () => _editWorldSetting(key, title),
+    onTap: () => _openWorldCategory(key, title),
   );
-
-  final characters = const <(String, String, String, String)>[];
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +345,209 @@ class _WorldTab extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+class _WorldCategoryPage extends StatefulWidget {
+  final String bookTitle;
+  final String title;
+  final List<_WorldDetailItem> initialItems;
+
+  const _WorldCategoryPage({
+    required this.bookTitle,
+    required this.title,
+    required this.initialItems,
+  });
+
+  @override
+  State<_WorldCategoryPage> createState() => _WorldCategoryPageState();
+}
+
+class _WorldCategoryPageState extends State<_WorldCategoryPage> {
+  late final List<_WorldDetailItem> items = [...widget.initialItems];
+  final titleController = TextEditingController();
+  final contentController = TextEditingController();
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    contentController.dispose();
+    super.dispose();
+  }
+
+  void _addItem() {
+    final itemTitle = titleController.text.trim();
+    final content = contentController.text.trim();
+    if (itemTitle.isEmpty || content.isEmpty) return;
+    setState(() {
+      items.add(_WorldDetailItem(title: itemTitle, content: content));
+      titleController.clear();
+      contentController.clear();
+    });
+  }
+
+  Future<void> _editItem(int index) async {
+    final editTitleController = TextEditingController(text: items[index].title);
+    final editContentController = TextEditingController(
+      text: items[index].content,
+    );
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('编辑${widget.title}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: editTitleController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '设定标题'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: editContentController,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: '设定内容',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              jsonEncode({
+                'title': editTitleController.text,
+                'content': editContentController.text,
+              }),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    editTitleController.dispose();
+    editContentController.dispose();
+    if (!mounted || value == null) return;
+    final decoded = jsonDecode(value);
+    if (decoded is! Map) return;
+    final edited = _WorldDetailItem.fromJson(
+      Map<String, dynamic>.from(decoded),
+    );
+    if (edited.title.trim().isEmpty || edited.content.trim().isEmpty) return;
+    setState(() => items[index] = edited);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: background,
+    appBar: AppBar(
+      backgroundColor: background,
+      title: Text(widget.title),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, items),
+          child: const Text('完成', style: TextStyle(color: gold)),
+        ),
+      ],
+    ),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
+      children: [
+        Text(
+          widget.bookTitle,
+          style: const TextStyle(color: gold, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '在这里拆分维护多条${widget.title}，保存后会回到当前作品的设定集。',
+          style: const TextStyle(color: Colors.black54, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        if (items.isEmpty)
+          card(
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: Text('还没有细化设定，请在下方添加')),
+            ),
+          )
+        else
+          ...items.asMap().entries.map(
+            (entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: card(
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFE7D7C0),
+                    foregroundColor: gold,
+                    child: Text('${entry.key + 1}'),
+                  ),
+                  title: Text(
+                    entry.value.title,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text(
+                    entry.value.content,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(height: 1.45),
+                  ),
+                  trailing: const Icon(
+                    Icons.edit_outlined,
+                    color: Colors.black38,
+                  ),
+                  onTap: () => _editItem(entry.key),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: titleController,
+          decoration: InputDecoration(
+            labelText: '设定标题',
+            hintText: '例如：皇城地理',
+            filled: true,
+            fillColor: surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE5D8C2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: contentController,
+          minLines: 3,
+          maxLines: 6,
+          textInputAction: TextInputAction.newline,
+          decoration: InputDecoration(
+            labelText: '设定内容',
+            hintText: '输入一条新的${widget.title}内容……',
+            filled: true,
+            fillColor: surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE5D8C2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: _addItem,
+          icon: const Icon(Icons.add),
+          label: Text('添加${widget.title}'),
+          style: FilledButton.styleFrom(backgroundColor: gold),
+        ),
+      ],
     ),
   );
 }

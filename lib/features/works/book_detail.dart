@@ -10,7 +10,9 @@ class BookDetail extends StatefulWidget {
 
 class _BookDetailState extends State<BookDetail> {
   _ImportedWork? importedWork;
+  List<_WorkCharacter> characters = const [];
   int lastChapter = 1;
+  bool loading = true;
 
   String get title => widget.title;
 
@@ -21,14 +23,34 @@ class _BookDetailState extends State<BookDetail> {
   }
 
   Future<void> _loadImportedWork() async {
-    final work = await ImportedWorkStore.find(title);
-    final p = await SharedPreferences.getInstance();
-    final savedChapter = p.getInt('reading_chapter_$title') ?? 1;
-    if (mounted)
-      setState(() {
-        if (work?.title == title) importedWork = work;
-        lastChapter = savedChapter;
-      });
+    final results = await Future.wait([
+      ImportedWorkStore.find(title),
+      SharedPreferences.getInstance(),
+      CharacterStore.load(title),
+    ]);
+    final work = results[0] as _ImportedWork?;
+    final p = results[1] as SharedPreferences;
+    final loadedCharacters = results[2] as List<_WorkCharacter>;
+    final savedChapter = p.getInt('reading_chapter_${title.trim()}') ?? 1;
+    if (!mounted) return;
+    setState(() {
+      importedWork = work;
+      characters = loadedCharacters;
+      lastChapter = savedChapter;
+      loading = false;
+    });
+  }
+
+  Future<void> _addCharacter() async {
+    final character = await showAddCharacterDialog(context);
+    if (character == null || !mounted) return;
+    final updated = [character, ...characters];
+    await CharacterStore.save(title, updated);
+    if (!mounted) return;
+    setState(() => characters = updated);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已新增角色：${character.name}')));
   }
 
   String get asset => importedWork?.cover ?? '';
@@ -112,6 +134,13 @@ class _BookDetailState extends State<BookDetail> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return Scaffold(
+        backgroundColor: background,
+        appBar: AppBar(backgroundColor: background, title: const Text('作品详情')),
+        body: const Center(child: CircularProgressIndicator(color: gold)),
+      );
+    }
     final isImported = importedWork?.title == title;
     if (!isImported) {
       return Scaffold(
@@ -121,10 +150,22 @@ class _BookDetailState extends State<BookDetail> {
       );
     }
     final chapterCount = importedWork!.chapters.length;
-    final importedText = isImported
-        ? importedWork!.chapters.map((chapter) => chapter.content).join('\n')
-        : '';
-    final progress = (lastChapter / chapterCount).clamp(0.0, 1.0);
+    final characterCount = importedWork!.chapters.fold<int>(
+      0,
+      (total, chapter) => total + chapter.content.length,
+    );
+    final preview = StringBuffer();
+    for (final chapter in importedWork!.chapters) {
+      if (preview.length >= 220) break;
+      if (preview.isNotEmpty) preview.write('\n');
+      preview.write(
+        chapter.content.characters.take(220 - preview.length).join(),
+      );
+    }
+    final importedText = preview.toString();
+    final progress = chapterCount == 0
+        ? 0.0
+        : (lastChapter / chapterCount).clamp(0.0, 1.0);
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
@@ -264,102 +305,15 @@ class _BookDetailState extends State<BookDetail> {
             ),
           ),
           const SizedBox(height: 14),
-          card(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '角色',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CharacterListPage(),
-                        ),
-                      ),
-                      child: const Text(
-                        '全部角色',
-                        style: TextStyle(color: gold, fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SizedBox(
-                  height: 146,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: const [Center(child: Text('暂无角色资料'))],
-                  ),
-                ),
-              ],
-            ),
+          _BookCharactersSection(
+            title: title,
+            characters: characters,
+            onAdd: _addCharacter,
           ),
           const SizedBox(height: 14),
-          card(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '本地文件',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8DECD),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'TXT',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            importedWork!.fileName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '${importedText.length} 字',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(
-                      Icons.folder_open_outlined,
-                      color: Colors.black54,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          _BookSourceFile(
+            work: importedWork!,
+            onChanged: (work) => setState(() => importedWork = work),
           ),
           const SizedBox(height: 14),
           card(
@@ -371,7 +325,7 @@ class _BookDetailState extends State<BookDetail> {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
                 ),
                 SizedBox(height: 10),
-                _InfoLine('字数统计', '${importedText.length} 字'),
+                _InfoLine('字数统计', '$characterCount 字'),
                 _InfoLine('章节数量', '$chapterCount 章'),
               ],
             ),

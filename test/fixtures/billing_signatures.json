@@ -1,0 +1,19 @@
+{
+  "source": "volcengine Python SDK 1.0.228 SignerV4; fixed UTC 20260826T070809Z; dummy credentials only",
+  "vectors": [
+    {
+      "method": "GET",
+      "action": "QueryBalanceAcct",
+      "body": "",
+      "authorization": "HMAC-SHA256 Credential=test-ak/20260826/cn-beijing/billing/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=c18aa0ef057f0b2a7a308d6fdbf2f967b8ba64c6dd234c756673fd81526e0f8e",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "method": "POST",
+      "action": "ListBillDetail",
+      "body": "{\"BillPeriod\":\"2026-08\",\"Limit\":100,\"Offset\":0,\"NeedRecordNum\":1,\"IgnoreZero\":0,\"GroupTerm\":2,\"GroupPeriod\":0}",
+      "authorization": "HMAC-SHA256 Credential=test-ak/20260826/cn-beijing/billing/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=0189167d7b1eb28a9f48c41b6fe7d878d294a87ec9f23978da41b92019a913b6",
+      "sha256": "230818c8b48b864d03caa299a65630bc38c90526d8fbb81796327128db923ef7"
+    }
+  ]
+}
