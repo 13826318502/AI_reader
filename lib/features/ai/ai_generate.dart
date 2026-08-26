@@ -53,6 +53,37 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
     setState(() => references.addAll(picked));
   }
 
+  Future<void> _pickReferenceFromGallery() async {
+    final image = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BookAiGalleryPage(title: widget.title, pickMode: true),
+      ),
+    );
+    if (!mounted || image == null || image.isEmpty) return;
+    try {
+      final bytes = await File(image).readAsBytes();
+      final lowerPath = image.toLowerCase();
+      final mime = lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')
+          ? 'jpeg'
+          : lowerPath.endsWith('.webp')
+          ? 'webp'
+          : 'png';
+      setState(() {
+        references.add(
+          _ReferenceImage(
+            name: 'AI生成图',
+            base64: 'data:image/$mime;base64,${base64Encode(bytes)}',
+          ),
+        );
+      });
+    } catch (_) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法读取这张 AI 生成图片')));
+    }
+  }
+
   void _removeReference(int index) {
     setState(() => references.removeAt(index));
   }
@@ -76,6 +107,7 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
         category: category,
         prompt: prompt.text.trim(),
         image: localImage ?? result,
+        label: 'AI生成图片',
       );
       if (!mounted) return;
       if (widget.insertMode) {
@@ -184,37 +216,24 @@ class _BookAiGeneratePageState extends State<BookAiGeneratePage> {
                   ),
                   const SizedBox(height: 8),
                 ],
-                InkWell(
-                  onTap: _pickReference,
-                  child: Container(
-                    height: 90,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE5D8C2)),
-                      borderRadius: BorderRadius.circular(12),
-                      color: const Color(0xFFFCF7ED),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.add_photo_alternate_outlined,
-                            color: gold,
-                            size: 26,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            references.isEmpty ? '点击上传参考图片' : '继续添加参考图片',
-                            style: const TextStyle(
-                              color: Colors.black54,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickReference,
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: Text(references.isEmpty ? '上传手机图片' : '继续上传'),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickReferenceFromGallery,
+                        icon: const Icon(Icons.auto_awesome_outlined),
+                        label: const Text('从 AI 生图导入'),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 const Text(

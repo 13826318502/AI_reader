@@ -26,6 +26,7 @@ class _WorldsState extends State<Worlds> {
   int tab = 0;
   String? selectedTitle;
   List<_ImportedWork> works = [];
+  List<_WorkCharacter> characters = [];
   final Map<String, String> worldSettings = {};
   final Map<String, List<_WorldDetailItem>> worldDetails = {};
 
@@ -34,7 +35,10 @@ class _WorldsState extends State<Worlds> {
     super.initState();
     selectedTitle = widget.initialTitle;
     _loadWorks();
-    if (selectedTitle != null) _loadWorldSettings();
+    if (selectedTitle != null) {
+      _loadWorldSettings();
+      _loadCharacters();
+    }
   }
 
   Future<void> _loadWorks() async {
@@ -82,6 +86,13 @@ class _WorldsState extends State<Worlds> {
           ..clear()
           ..addAll(details);
       });
+  }
+
+  Future<void> _loadCharacters() async {
+    final title = selectedTitle;
+    if (title == null) return;
+    final loaded = await CharacterStore.load(title);
+    if (mounted && title == selectedTitle) setState(() => characters = loaded);
   }
 
   Future<void> _openWorldCategory(String key, String title) async {
@@ -159,8 +170,10 @@ class _WorldsState extends State<Worlds> {
                     setState(() {
                       selectedTitle = work.title;
                       tab = 0;
+                      characters = [];
                     });
                     _loadWorldSettings();
+                    _loadCharacters();
                   },
                   borderRadius: BorderRadius.circular(16),
                   child: card(
@@ -172,7 +185,12 @@ class _WorldsState extends State<Worlds> {
                             width: 70,
                             height: 84,
                             color: const Color(0xFFE8DED0),
-                            child: const Icon(Icons.menu_book_outlined),
+                            child: work.cover.isEmpty
+                                ? const Icon(Icons.menu_book_outlined)
+                                : AiImagePreview(
+                                    image: work.cover,
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -249,7 +267,10 @@ class _WorldsState extends State<Worlds> {
                 ),
               ),
               TextButton(
-                onPressed: () => setState(() => selectedTitle = null),
+                onPressed: () => setState(() {
+                  selectedTitle = null;
+                  characters = [];
+                }),
                 child: const Text(
                   '更换作品',
                   style: TextStyle(color: gold, fontSize: 12),
@@ -304,9 +325,61 @@ class _WorldsState extends State<Worlds> {
               ),
             ),
           ] else ...[
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
-              child: Center(child: Text('暂无角色资料')),
+            card(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '角色档案',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                CharacterListPage(workTitle: selectedTitle),
+                          ),
+                        ),
+                        icon: const Icon(Icons.style_outlined, size: 16),
+                        label: const Text('角色卡片'),
+                        style: TextButton.styleFrom(foregroundColor: gold),
+                      ),
+                    ],
+                  ),
+                  if (characters.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(child: Text('暂无角色资料，请在作品详情中新增角色')),
+                    )
+                  else
+                    ...characters.map(
+                      (character) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: CharacterCard(
+                          name: character.name,
+                          role: character.role,
+                          intro: character.intro,
+                          image: character.image,
+                          workTitle: selectedTitle,
+                          characterId: character.id,
+                          appearance: character.appearance,
+                          personality: character.personality,
+                          background: character.background,
+                          goal: character.goal,
+                          firstAppearance: character.firstAppearance,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ],
         ],
@@ -433,8 +506,13 @@ class _WorldCategoryPageState extends State<_WorldCategoryPage> {
         ],
       ),
     );
-    editTitleController.dispose();
-    editContentController.dispose();
+    // showDialog returns before its closing transition fully detaches the
+    // TextFields. Dispose after the transition so AnimatedTextField listeners
+    // cannot touch an already-disposed controller.
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      editTitleController.dispose();
+      editContentController.dispose();
+    });
     if (!mounted || value == null) return;
     final decoded = jsonDecode(value);
     if (decoded is! Map) return;

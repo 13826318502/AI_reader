@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -40,6 +41,7 @@ part 'shared/reader_widgets.dart';
 part 'features/characters/character_pages.dart';
 part 'features/characters/character_store.dart';
 part 'features/characters/relations.dart';
+part 'features/characters/relation_layout_service.dart';
 part 'features/characters/relation_store.dart';
 part 'features/characters/relation_form.dart';
 part 'features/characters/character_ai.dart';

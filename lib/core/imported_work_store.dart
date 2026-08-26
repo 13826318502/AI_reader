@@ -71,6 +71,66 @@ class ImportedWorkStore {
     await preferences.setString('latest_imported_work', records.first);
   }
 
+  static Future<bool> rename(String oldTitle, String newTitle) async {
+    final oldValue = oldTitle.trim();
+    final newValue = newTitle.trim();
+    if (oldValue.isEmpty || newValue.isEmpty || oldValue == newValue)
+      return false;
+    final preferences = await SharedPreferences.getInstance();
+    final works = await loadAll();
+    final work = works.cast<_ImportedWork?>().firstWhere(
+      (item) => item?.title == oldValue,
+      orElse: () => null,
+    );
+    if (work == null || works.any((item) => item.title == newValue))
+      return false;
+    final renamed = work.copyWith(title: newValue);
+    works
+      ..removeWhere((item) => item.id == work.id || item.title == oldValue)
+      ..insert(0, renamed);
+    final records = await compute(_encodeImportedWorks, works);
+    await preferences.setStringList(collectionKey, records);
+    final latest = preferences.getString('latest_imported_work');
+    if (latest != null && latest.contains('"title":"$oldValue"')) {
+      await preferences.setString('latest_imported_work', records.first);
+    }
+
+    final prefixes = [
+      'characters_${oldValue}',
+      'world_${oldValue}_',
+      'ai_image_pages_${oldValue}',
+      'bookmarks_${oldValue}',
+      'bookmark_${oldValue}_',
+      'bookmark_page_${oldValue}_',
+      'reading_offset_${oldValue}_',
+      'reading_page_${oldValue}_',
+      'reading_chapter_${oldValue}',
+    ];
+    for (final key in preferences.getKeys().toList()) {
+      final prefix = prefixes.cast<String?>().firstWhere(
+        (item) => item != null && key.startsWith(item),
+        orElse: () => null,
+      );
+      if (prefix == null) continue;
+      final suffix = key.substring(prefix.length);
+      final newKey = prefix.replaceFirst(oldValue, newValue) + suffix;
+      final value = preferences.get(key);
+      if (value is String) {
+        await preferences.setString(newKey, value);
+      } else if (value is bool) {
+        await preferences.setBool(newKey, value);
+      } else if (value is int) {
+        await preferences.setInt(newKey, value);
+      } else if (value is double) {
+        await preferences.setDouble(newKey, value);
+      } else if (value is List<String>) {
+        await preferences.setStringList(newKey, value);
+      }
+      await preferences.remove(key);
+    }
+    return true;
+  }
+
   static Future<void> delete(String title) async {
     final preferences = await SharedPreferences.getInstance();
     final works = await loadAll();

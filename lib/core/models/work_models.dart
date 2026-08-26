@@ -22,14 +22,15 @@ class _ImportedWork {
     this.sourceUri = '',
   });
 
-  _ImportedWork copyWith({String? cover, String? sourceUri}) => _ImportedWork(
-    id: id,
-    fileName: fileName,
-    title: title,
-    chapters: chapters,
-    cover: cover ?? this.cover,
-    sourceUri: sourceUri ?? this.sourceUri,
-  );
+  _ImportedWork copyWith({String? title, String? cover, String? sourceUri}) =>
+      _ImportedWork(
+        id: id,
+        fileName: fileName,
+        title: title ?? this.title,
+        chapters: chapters,
+        cover: cover ?? this.cover,
+        sourceUri: sourceUri ?? this.sourceUri,
+      );
 
   Map<String, dynamic> toJson() => {
     'id': id,

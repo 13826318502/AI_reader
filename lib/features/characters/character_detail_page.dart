@@ -1,6 +1,6 @@
 part of '../../main.dart';
 
-class CharacterDetailPage extends StatelessWidget {
+class CharacterDetailPage extends StatefulWidget {
   final String name;
   final String role;
   final String image;
@@ -26,6 +26,72 @@ class CharacterDetailPage extends StatelessWidget {
     this.characterId,
     super.key,
   });
+
+  @override
+  State<CharacterDetailPage> createState() => _CharacterDetailPageState();
+}
+
+class _CharacterDetailPageState extends State<CharacterDetailPage> {
+  late _WorkCharacter current;
+
+  @override
+  void initState() {
+    super.initState();
+    current = _WorkCharacter(
+      id:
+          widget.characterId ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
+      name: widget.name,
+      role: widget.role,
+      intro: widget.intro,
+      appearance: widget.appearance,
+      personality: widget.personality,
+      background: widget.characterBackground,
+      goal: widget.goal,
+      firstAppearance: widget.firstAppearance,
+      image: widget.image,
+    );
+  }
+
+  String get name => current.name;
+  String get role => current.role;
+  String get image => current.image;
+  String get intro => current.intro;
+  String get appearance => current.appearance;
+  String get personality => current.personality;
+  String get characterBackground => current.background;
+  String get goal => current.goal;
+  String get firstAppearance => current.firstAppearance;
+
+  Future<void> _editCharacter() async {
+    final updated = await Navigator.push<_WorkCharacter>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            CharacterEditorPage(initial: current, workTitle: widget.workTitle),
+      ),
+    );
+    if (updated != null && mounted) setState(() => current = updated);
+  }
+
+  Widget _detailModule(String title, String value, {String empty = '暂无内容'}) =>
+      card(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(
+              value.trim().isEmpty ? empty : value,
+              style: TextStyle(
+                color: value.trim().isEmpty ? Colors.black38 : Colors.black54,
+                height: 1.6,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      );
 
   String get fullBodyImage => image;
 
@@ -130,28 +196,7 @@ class CharacterDetailPage extends StatelessWidget {
       title: const Text('角色详情', style: TextStyle(fontWeight: FontWeight.w900)),
       actions: [
         IconButton(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => CharacterEditorPage(
-                initial: _WorkCharacter(
-                  id:
-                      characterId ??
-                      DateTime.now().microsecondsSinceEpoch.toString(),
-                  name: name,
-                  role: role,
-                  intro: intro,
-                  appearance: appearance,
-                  personality: personality,
-                  background: characterBackground,
-                  goal: goal,
-                  firstAppearance: firstAppearance,
-                  image: image,
-                ),
-                workTitle: workTitle,
-              ),
-            ),
-          ),
+          onPressed: _editCharacter,
           tooltip: '编辑角色卡',
           icon: const Icon(Icons.edit_outlined),
         ),
@@ -169,8 +214,8 @@ class CharacterDetailPage extends StatelessWidget {
                 role: role,
                 image: image,
                 intro: intro,
-                workTitle: workTitle,
-                characterId: characterId,
+                workTitle: widget.workTitle,
+                characterId: widget.characterId,
                 appearance: appearance,
                 personality: personality,
                 background: characterBackground,
@@ -282,8 +327,11 @@ class CharacterDetailPage extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    RelationMapPage(selectedName: name, selectedImage: image),
+                builder: (_) => RelationMapPage(
+                  selectedName: name,
+                  selectedImage: image,
+                  workTitle: widget.workTitle,
+                ),
               ),
             ),
             icon: const Icon(Icons.hub_outlined),
@@ -298,39 +346,17 @@ class CharacterDetailPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        card(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('角色详情', style: TextStyle(fontWeight: FontWeight.w800)),
-              SizedBox(height: 10),
-              Text(
-                intro.isEmpty ? '暂无角色详情，请点击编辑补充资料。' : intro,
-                style: const TextStyle(
-                  color: Colors.black54,
-                  height: 1.6,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        card(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('角色信息', style: TextStyle(fontWeight: FontWeight.w800)),
-              SizedBox(height: 10),
-              _InfoLine(
-                '首次出现',
-                firstAppearance.isEmpty ? '暂无' : firstAppearance,
-              ),
-              _InfoLine('相关章节', '暂无'),
-              _InfoLine('人物关系', '请在关系页面维护'),
-            ],
-          ),
-        ),
+        _detailModule('角色简介', intro),
+        const SizedBox(height: 12),
+        _detailModule('外貌特征', appearance),
+        const SizedBox(height: 12),
+        _detailModule('性格特点', personality),
+        const SizedBox(height: 12),
+        _detailModule('人物背景', characterBackground),
+        const SizedBox(height: 12),
+        _detailModule('目标与动机', goal),
+        const SizedBox(height: 12),
+        _detailModule('首次出场', firstAppearance),
       ],
     ),
   );

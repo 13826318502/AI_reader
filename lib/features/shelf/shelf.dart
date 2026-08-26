@@ -163,6 +163,11 @@ class _ShelfState extends State<Shelf> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.edit_outlined, color: gold),
+              title: const Text('更改小说名字'),
+              onTap: () => Navigator.pop(sheetContext, 'rename'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('删除小说'),
               onTap: () => Navigator.pop(sheetContext, 'delete'),
@@ -177,6 +182,10 @@ class _ShelfState extends State<Shelf> {
       ),
     );
     if (!mounted) return;
+    if (action == 'rename') {
+      await _renameBook(context, title);
+      return;
+    }
     if (action == 'delete') {
       await _confirmDeleteFromShelf(context, title);
       return;
@@ -197,6 +206,50 @@ class _ShelfState extends State<Shelf> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('小说封面已更新，所有页面已同步')));
+    }
+  }
+
+  Future<void> _renameBook(BuildContext context, String oldTitle) async {
+    final controller = TextEditingController(text: oldTitle);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('更改小说名字'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: const InputDecoration(labelText: '小说名字'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || newTitle == null) return;
+    final renamed = await ImportedWorkStore.rename(oldTitle, newTitle);
+    if (!renamed) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('改名失败：名字为空或已存在同名作品')));
+      }
+      return;
+    }
+    await AiGalleryStore.renameBook(oldTitle, newTitle.trim());
+    await _loadImportedBook();
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('小说名字已更改，相关资料已同步')));
     }
   }
 

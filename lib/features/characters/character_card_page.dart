@@ -234,8 +234,11 @@ class _CharacterCardPageState extends State<CharacterCardPage> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    RelationMapPage(selectedName: name, selectedImage: image),
+                builder: (_) => RelationMapPage(
+                  selectedName: name,
+                  selectedImage: image,
+                  workTitle: widget.workTitle,
+                ),
               ),
             ),
             icon: const Icon(Icons.hub_outlined),

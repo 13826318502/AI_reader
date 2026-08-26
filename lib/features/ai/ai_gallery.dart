@@ -75,17 +75,29 @@ class AiGalleryStore {
     required int category,
     required String prompt,
     required String image,
+    String? label,
   }) async {
     items.insert(
       0,
-      _AiGalleryItem(
-        bookTitle,
-        image,
-        prompt.isEmpty ? '未命名图片' : prompt,
-        category,
-      ),
+      _AiGalleryItem(bookTitle, image, label ?? 'AI生成图片', category),
     );
     await _save();
+  }
+
+  static Future<void> renameBook(String oldTitle, String newTitle) async {
+    var changed = false;
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (item.bookTitle != oldTitle) continue;
+      items[i] = _AiGalleryItem(
+        newTitle,
+        item.image,
+        item.label,
+        item.category,
+      );
+      changed = true;
+    }
+    if (changed) await _save();
   }
 }
 
@@ -110,7 +122,7 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
   @override
   void initState() {
     super.initState();
-    category = widget.pickMode ? 3 : widget.initialCategory.clamp(0, 3).toInt();
+    category = widget.initialCategory.clamp(0, 3).toInt();
     AiGalleryStore.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -118,7 +130,9 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
 
   List<_AiGalleryItem> get visibleImages => AiGalleryStore.items
       .where(
-        (item) => item.bookTitle == widget.title && item.category == category,
+        (item) =>
+            item.bookTitle == widget.title &&
+            (widget.pickMode || item.category == category),
       )
       .toList();
 
@@ -138,6 +152,7 @@ class _BookAiGalleryPageState extends State<BookAiGalleryPage> {
         category: category,
         prompt: result.files.single.name,
         image: file.path,
+        label: result.files.single.name,
       );
       if (mounted) setState(() {});
     }

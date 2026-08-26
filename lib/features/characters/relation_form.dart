@@ -4,17 +4,26 @@ Future<_CharacterRelation?> showAddRelationDialog({
   required BuildContext context,
   required String fromName,
   required String fromImage,
+  List<_WorkCharacter> availableCharacters = const [],
 }) => showDialog<_CharacterRelation>(
   context: context,
-  builder: (dialogContext) =>
-      _AddRelationDialog(fromName: fromName, fromImage: fromImage),
+  builder: (dialogContext) => _AddRelationDialog(
+    fromName: fromName,
+    fromImage: fromImage,
+    availableCharacters: availableCharacters,
+  ),
 );
 
 class _AddRelationDialog extends StatefulWidget {
   final String fromName;
   final String fromImage;
+  final List<_WorkCharacter> availableCharacters;
 
-  const _AddRelationDialog({required this.fromName, required this.fromImage});
+  const _AddRelationDialog({
+    required this.fromName,
+    required this.fromImage,
+    required this.availableCharacters,
+  });
 
   @override
   State<_AddRelationDialog> createState() => _AddRelationDialogState();
@@ -23,6 +32,7 @@ class _AddRelationDialog extends StatefulWidget {
 class _AddRelationDialogState extends State<_AddRelationDialog> {
   final toName = TextEditingController();
   final relation = TextEditingController();
+  String? selectedTarget;
 
   @override
   void dispose() {
@@ -32,8 +42,11 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
   }
 
   void _submit() {
-    final target = toName.text.trim();
+    final target = (selectedTarget ?? toName.text).trim();
     final label = relation.text.trim();
+    final targetCharacter = widget.availableCharacters
+        .cast<_WorkCharacter?>()
+        .firstWhere((item) => item?.name == target, orElse: () => null);
     if (target.isEmpty || label.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -53,7 +66,7 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
         fromName: widget.fromName,
         fromImage: widget.fromImage,
         toName: target,
-        toImage: 'assets/ai_portrait.png',
+        toImage: targetCharacter?.image ?? 'assets/ai_portrait.png',
         relation: label,
       ),
     );
@@ -69,15 +82,34 @@ class _AddRelationDialogState extends State<_AddRelationDialog> {
         children: [
           Text('当前角色：${widget.fromName}'),
           const SizedBox(height: 14),
-          TextField(
-            controller: toName,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '对方角色',
-              hintText: '例如：顾长安',
-              border: OutlineInputBorder(),
+          if (widget.availableCharacters.isEmpty)
+            TextField(
+              controller: toName,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '对方角色',
+                hintText: '例如：顾长安',
+                border: OutlineInputBorder(),
+              ),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: selectedTarget,
+              decoration: const InputDecoration(
+                labelText: '对方角色',
+                border: OutlineInputBorder(),
+              ),
+              items: widget.availableCharacters
+                  .where((item) => item.name != widget.fromName)
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item.name,
+                      child: Text(item.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(() => selectedTarget = value),
             ),
-          ),
           const SizedBox(height: 12),
           TextField(
             controller: relation,

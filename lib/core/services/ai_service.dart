@@ -278,12 +278,14 @@ void main() {
         );
         return true;
       };
-      await ThemePreferenceStore.load();
+      // Render the shell before optional device and preference initialization.
+      // A slow platform channel must never keep the Android splash screen up.
+      runApp(const ArcReaderApp());
+      unawaited(ThemePreferenceStore.load());
       await SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,
       ]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      runApp(const ArcReaderApp());
     },
     (error, stack) {
       AppErrorLogStore.append(

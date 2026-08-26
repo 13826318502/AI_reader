@@ -8,8 +8,11 @@ class AiServiceConfigPage extends StatefulWidget {
 
 class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
   final baseUrl = TextEditingController();
+  final textBaseUrl = TextEditingController();
+  final textApiKey = TextEditingController();
   final apiKey = TextEditingController();
   final model = TextEditingController(text: 'doubao-seedream-4-5-251128');
+  final textModel = TextEditingController();
   String provider = '火山方舟';
   String selectedModel = 'doubao-seedream-4-5-251128';
   bool obscure = true;
@@ -44,6 +47,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
         ? arkBaseUrl
         : savedBaseUrl;
     apiKey.text = p.getString('ai_api_key') ?? '';
+    textBaseUrl.text = p.getString('ai_text_base_url') ?? '';
+    textApiKey.text = p.getString('ai_text_api_key') ?? '';
+    textModel.text = p.getString('ai_text_model') ?? '';
     final rawModel = p.getString('ai_model') ?? '';
     final savedModel =
         rawModel.isEmpty ||
@@ -71,6 +77,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
           'base_url': baseUrl.text,
           'api_key': apiKey.text,
           'model': model.text,
+          'text_base_url': textBaseUrl.text,
+          'text_model': textModel.text,
+          'text_api_key': textApiKey.text,
         };
         requestLogs = logs;
         loading = false;
@@ -118,6 +127,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       'base_url': p.getString('ai_base_url') ?? '',
       'api_key': p.getString('ai_api_key') ?? '',
       'model': p.getString('ai_model') ?? '',
+      'text_base_url': p.getString('ai_text_base_url') ?? '',
+      'text_model': p.getString('ai_text_model') ?? '',
+      'text_api_key': p.getString('ai_text_api_key') ?? '',
     };
     for (final entry in oldValues.entries) {
       await p.setString('ai_previous_${entry.key}', entry.value);
@@ -126,6 +138,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     await p.setString('ai_base_url', baseUrl.text.trim());
     await p.setString('ai_api_key', apiKey.text.trim());
     await p.setString('ai_model', model.text.trim());
+    await p.setString('ai_text_base_url', textBaseUrl.text.trim());
+    await p.setString('ai_text_model', textModel.text.trim());
+    await p.setString('ai_text_api_key', textApiKey.text.trim());
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -156,6 +171,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
         baseUrl.text = initialConfiguration['base_url'] ?? '';
         apiKey.text = initialConfiguration['api_key'] ?? '';
         model.text = initialConfiguration['model'] ?? '';
+        textBaseUrl.text = initialConfiguration['text_base_url'] ?? '';
+        textModel.text = initialConfiguration['text_model'] ?? '';
+        textApiKey.text = initialConfiguration['text_api_key'] ?? '';
         selectedModel = modelOptions.containsKey(model.text)
             ? model.text
             : '自定义模型';
@@ -175,6 +193,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
       baseUrl.text = p.getString('ai_previous_base_url') ?? '';
       apiKey.text = p.getString('ai_previous_api_key') ?? '';
       model.text = previousModel;
+      textBaseUrl.text = p.getString('ai_previous_text_base_url') ?? '';
+      textModel.text = p.getString('ai_previous_text_model') ?? '';
+      textApiKey.text = p.getString('ai_previous_text_api_key') ?? '';
       selectedModel = modelOptions.containsKey(previousModel)
           ? previousModel
           : '自定义模型';
@@ -183,6 +204,9 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
     await p.setString('ai_base_url', baseUrl.text);
     await p.setString('ai_api_key', apiKey.text);
     await p.setString('ai_model', model.text);
+    await p.setString('ai_text_base_url', textBaseUrl.text);
+    await p.setString('ai_text_model', textModel.text);
+    await p.setString('ai_text_api_key', textApiKey.text);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -212,8 +236,11 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
   @override
   void dispose() {
     baseUrl.dispose();
+    textBaseUrl.dispose();
+    textApiKey.dispose();
     apiKey.dispose();
     model.dispose();
+    textModel.dispose();
     super.dispose();
   }
 
@@ -369,6 +396,70 @@ class _AiServiceConfigPageState extends State<AiServiceConfigPage> {
                         icon: const Icon(Icons.restore),
                         label: const Text('恢复之前的配置'),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              card(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '普通大模型服务',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '用于人物关系自动布局、设定整理等文本任务，与上方 API Key 共用。',
+                      style: TextStyle(color: Colors.black54, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: textBaseUrl,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: '普通模型 API Base URL',
+                        hintText: '例如：https://api.openai.com/v1',
+                        helperText:
+                            '可填写 OpenAI 兼容接口地址，程序会自动补全 /chat/completions',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: textModel,
+                      decoration: const InputDecoration(
+                        labelText: '普通模型名称',
+                        hintText: '例如：gpt-4o-mini / doubao-seed-1-6',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: textApiKey,
+                      obscureText: obscure,
+                      decoration: InputDecoration(
+                        labelText: '普通大模型 API Key',
+                        hintText: '可与生图 API Key 不同',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(() => obscure = !obscure),
+                          icon: Icon(
+                            obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      '留空时，关系图使用本地稳定布局；配置后可点击“AI 自动布局”。',
+                      style: TextStyle(color: Colors.black54, fontSize: 11),
                     ),
                   ],
                 ),
