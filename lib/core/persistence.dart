@@ -1,0 +1,208 @@
+part of '../main.dart';
+
+class AppErrorLog {
+  final DateTime timestamp;
+  final String source;
+  final String error;
+  final String stack;
+  final String context;
+
+  const AppErrorLog({
+    required this.timestamp,
+    required this.source,
+    required this.error,
+    required this.stack,
+    required this.context,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'timestamp': timestamp.toIso8601String(),
+    'source': source,
+    'error': error,
+    'stack': stack,
+    'context': context,
+  };
+
+  factory AppErrorLog.fromJson(Map<String, dynamic> json) => AppErrorLog(
+    timestamp:
+        DateTime.tryParse(json['timestamp']?.toString() ?? '') ??
+        DateTime.now(),
+    source: json['source']?.toString() ?? 'unknown',
+    error: json['error']?.toString() ?? '',
+    stack: json['stack']?.toString() ?? '',
+    context: json['context']?.toString() ?? '',
+  );
+}
+
+class AppErrorLogStore {
+  static const key = 'app_error_logs';
+  static const maxEntries = 100;
+  static bool _writing = false;
+
+  static Future<List<AppErrorLog>> load() async {
+    final p = await SharedPreferences.getInstance();
+    return (p.getStringList(key) ?? const [])
+        .map((value) {
+          try {
+            final json = jsonDecode(value);
+            return json is Map
+                ? AppErrorLog.fromJson(Map<String, dynamic>.from(json))
+                : null;
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<AppErrorLog>()
+        .toList();
+  }
+
+  static Future<void> append({
+    required Object error,
+    StackTrace? stack,
+    String source = 'runtime',
+    String context = '',
+  }) async {
+    if (_writing) return;
+    _writing = true;
+    try {
+      final entries = await load();
+      entries.insert(
+        0,
+        AppErrorLog(
+          timestamp: DateTime.now(),
+          source: source,
+          error: error.toString(),
+          stack: stack?.toString() ?? '',
+          context: context,
+        ),
+      );
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(
+        key,
+        entries
+            .take(maxEntries)
+            .map((entry) => jsonEncode(entry.toJson()))
+            .toList(),
+      );
+    } finally {
+      _writing = false;
+    }
+  }
+
+  static Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(key);
+  }
+}
+
+class ReadingPreferencesStore {
+  static double fontSize = 18;
+  static bool immersive = true;
+  static bool pageTurn = true;
+
+  static Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    fontSize = p.getDouble('reading_font_size') ?? 18;
+    immersive = p.getBool('reading_immersive') ?? true;
+    pageTurn = p.getBool('reading_page_turn') ?? true;
+  }
+
+  static Future<void> save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setDouble('reading_font_size', fontSize);
+    await p.setBool('reading_immersive', immersive);
+    await p.setBool('reading_page_turn', pageTurn);
+  }
+}
+
+class AiImageStorage {
+  static const _folderName = 'AI生成图片';
+
+  static Future<Directory> directory() async {
+    final base =
+        await getExternalStorageDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final folder = Directory('${base.path}/$_folderName');
+    if (!await folder.exists()) await folder.create(recursive: true);
+    return folder;
+  }
+
+  static Future<String?> save(
+    String image, {
+    String prefix = 'ai_image',
+  }) async {
+    try {
+      final bytes = image.startsWith('data:image/')
+          ? base64Decode(image.substring(image.indexOf(',') + 1))
+          : (await http.get(Uri.parse(image))).bodyBytes;
+      final folder = await directory();
+      final stamp = DateTime.now().toIso8601String().replaceAll(
+        RegExp(r'[^0-9]'),
+        '',
+      );
+      final file = File('${folder.path}/${prefix}_$stamp.png');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<int> sizeBytes() async {
+    final folder = await directory();
+    var total = 0;
+    await for (final entity in folder.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is File) total += await entity.length();
+    }
+    return total;
+  }
+
+  static Future<List<File>> imageFiles() async {
+    final folder = await directory();
+    final files = <File>[];
+    await for (final entity in folder.list(
+      recursive: false,
+      followLinks: false,
+    )) {
+      if (entity is File &&
+          RegExp(
+            r'\.(png|jpg|jpeg|webp)$',
+            caseSensitive: false,
+          ).hasMatch(entity.path)) {
+        files.add(entity);
+      }
+    }
+    return files;
+  }
+
+  static Future<void> clear() async {
+    final folder = await directory();
+    await for (final entity in folder.list(
+      recursive: false,
+      followLinks: false,
+    )) {
+      await entity.delete(recursive: true);
+    }
+  }
+
+  static Future<Directory> openDirectory() async {
+    final folder = await directory();
+    try {
+      await const MethodChannel(
+        'arc_reader/file_manager',
+      ).invokeMethod<void>('openFolder', {'path': folder.path});
+    } catch (_) {
+      if (Platform.isWindows) {
+        await Process.run('explorer.exe', [folder.path]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [folder.path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [folder.path]);
+      }
+    }
+    return folder;
+  }
+}

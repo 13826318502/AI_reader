@@ -11,6 +11,8 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "arc_reader/file_manager"
+    private val readerControlsChannel = "arc_reader/reader_controls"
+    private var volumePageTurn = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -38,6 +40,33 @@ class MainActivity : FlutterActivity() {
                     result.error("OPEN_FOLDER_FAILED", error.message, null)
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, readerControlsChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setVolumePageTurn" -> {
+                        volumePageTurn = call.argument<Boolean>("enabled") == true
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (volumePageTurn && event.repeatCount == 0 &&
+            (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+                keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
+        ) {
+            val direction = if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+            flutterEngine?.dartExecutor?.binaryMessenger?.let { messenger ->
+                MethodChannel(messenger, readerControlsChannel).invokeMethod(
+                    "volumeKey",
+                    mapOf("direction" to direction),
+                )
+            }
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     private fun openFolder(path: String): Boolean {
